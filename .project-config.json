@@ -1,0 +1,35 @@
+{
+  "build_command": "pnpm run build",
+  "capabilities": [],
+  "dev_command": "pnpm run dev",
+  "env_vars": {},
+  "experiments": null,
+  "git_remote": {
+    "repo_url": "s3://vida-prod-gitrepo/webdev-git/310519663404944025/TNFZ8cagyBkW9kG38ZG4xk",
+    "access_key_id": "ASIAZV3A2ECZKFEPZFEZ",
+    "secret_access_key": "Gl64gw5qriRJnFjCVnAbW5b9PCq6W9MLz6miPCC+",
+    "session_token": "IQoJb3JpZ2luX2VjEOn//////////wEaCXVzLWVhc3QtMSJHMEUCIQCaH2wWiXKp3v01iYYTRwQrpbA1QuhA1XPQULJ3h51mLAIgY+5b+wuKnwloJyEi/gHyCwQaW5GraWg5pAm+nbj5iV0q/wMIsv//////////ARAEGgw2NjUzODYwOTg4NjYiDOnWxNtnHTsIvZceSCrTAyXYA2IGLrtuVgCSM3mARbng5+xHxcXEOWn6HiAqnkl8zwqboV36OEPNFdgM12WLcAbpK2jOC+nYGkJjMEMAErAZCHm+x9VSQzTG2G7xHt/TPkTbhP8hVz0IlvUAGunZbBmgX+31LE4lUZgUNUDKGL4CemkYlCMQs5QohTnQYXCJqQ/vCm998GwY2gsiwJfXI3CYhh6jC+8I2h8aFsCM0W83glrWnCXMMZRdHhs3h2GSIUlxU1MDjAYQzFhTho1Qme/lrKo4XTJ2p86FTGuZpJUISyNJETnJdFIOVrMxzK6fC/M2pQbVgxCUgN/eUFbR7EMgSGskIKcH5y1M9bBxucIU3zED7kCsHTb2HgcJrgfKb07MVdYjVqnj2ztN18Tp7ncDq82Wm/b8JAQjvD+UQn4l+3I7g/ff8kuGJA5TFP1UR0ToMw0JNybED8fkOQpjV10wMsIqBUiMiTWAuFUN5JEQn5PMHsTZbS/+LA3h8R++Z6Tmun7EW1ZnWbqWkBf4riIG7krgRkgfw3cPslzJrjnxzr/hvkiQJf9+vqE5pw1no4SPoZIOL/7DdaDROqvrzU4/fD8Q6/B2K2vKAfuZOz2YO8ogA2qP+zyiM4AAjoS1StHfMJ24qdAGOp0BMx8lieglq8wAAUGv7tfI31wsnQVCD/D+tDWRrZ1js3LCxK8ZoPQzRjSK+f+aEB1R9zIGabe1cEeLB0O/V6/AL1NR5vFQ5CC7ybKWVQHI9WEqiukUOfrNL+t6pzeItmb4R/ML+LkPwdKRvbRK/PXe/Us/uQdbI7FWFig7foWRY53Y/5VwATj0OlMAy9ACBDUxNRLMzB2mWKvJR5RavQ==",
+    "expiration": "2026-05-18T12:23:57.000Z"
+  },
+  "name": "sullivans-crossing-map",
+  "path": "/home/ubuntu/sullivans-crossing-map",
+  "port": 3000,
+  "secrets": {
+    "BUILT_IN_FORGE_API_KEY": "a4RRqaVZoFLiPTjecbBy3R",
+    "BUILT_IN_FORGE_API_URL": "https://forge.manus.ai",
+    "JWT_SECRET": "YUBMcfoy5bRH7P995tTTGv",
+    "OAUTH_SERVER_URL": "https://api.manus.im",
+    "OWNER_NAME": "Chad Young",
+    "OWNER_OPEN_ID": "8bHNmoDNj2XDxWz8EEVBno",
+    "VITE_ANALYTICS_ENDPOINT": "https://manus-analytics.com",
+    "VITE_ANALYTICS_WEBSITE_ID": "2157ae50-ec40-442b-80cc-1cabb74b7388",
+    "VITE_APP_ID": "TNFZ8cagyBkW9kG38ZG4xk",
+    "VITE_APP_LOGO": "",
+    "VITE_APP_TITLE": "Sullivan's Crossing – Nova Scotia Filming Locations Fan Map",
+    "VITE_FRONTEND_FORGE_API_KEY": "SEvKFtc7ss9Ap3YvE6yX9B",
+    "VITE_FRONTEND_FORGE_API_URL": "https://forge.manus.ai",
+    "VITE_OAUTH_PORTAL_URL": "https://manus.im"
+  },
+  "template_id": "web-static",
+  "test_command": "pnpm test"
+}
