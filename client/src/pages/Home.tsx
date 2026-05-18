@@ -15,6 +15,7 @@ import {
   categoryGroups,
   seasonColors,
   getMarkerColor,
+  getMapsUrl,
   type Location,
 } from "@/data/locations";
 
@@ -776,9 +777,9 @@ export default function Home() {
                             <div style={{ fontSize: 12, color: "oklch(0.50 0.04 220)", marginBottom: 8 }}>
                               📍 {loc.address}
                             </div>
-                            {loc.mapsUrl && (
+                            {(
                               <a
-                                href={loc.mapsUrl}
+                                href={getMapsUrl(loc)}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 style={{
@@ -1102,9 +1103,9 @@ function DesktopSidebarContent({
                         <div style={{ fontSize: 11, color: "oklch(0.50 0.04 220)", marginBottom: 6 }}>
                           📍 {loc.address}
                         </div>
-                        {loc.mapsUrl && (
+                        {(
                           <a
-                            href={loc.mapsUrl}
+                            href={getMapsUrl(loc)}
                             target="_blank"
                             rel="noopener noreferrer"
                             style={{
