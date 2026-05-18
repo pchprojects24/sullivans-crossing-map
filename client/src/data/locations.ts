@@ -125,7 +125,6 @@ export const locations: Location[] = [
     lon: -63.5958,
     visitorTip: "Open to the public – a classic British pub experience right across from Hali Deli. Perfect for a fan double-stop!",
     publicAccess: true,
-    mapsUrl: "https://maps.app.goo.gl/PSNSBtqZ83CCNh3w6",
   },
   {
     id: 6,
@@ -154,7 +153,6 @@ export const locations: Location[] = [
     lon: -63.5701,
     visitorTip: "Open to the public – enjoy the same stylish atmosphere seen on screen, right on the Halifax waterfront.",
     publicAccess: true,
-    mapsUrl: "https://maps.app.goo.gl/PSNSBtqZ83CCNh3w6",
   },
   {
     id: 8,
@@ -685,4 +683,11 @@ export function getMarkerColor(location: Location): string {
     }
   }
   return "#1a2e3b";
+}
+
+// Prefer a curated short link when available, otherwise build an accurate
+// Google Maps link from the location's coordinates so every entry is reachable.
+export function getMapsUrl(location: Location): string {
+  if (location.mapsUrl) return location.mapsUrl;
+  return `https://www.google.com/maps/search/?api=1&query=${location.lat},${location.lon}`;
 }
