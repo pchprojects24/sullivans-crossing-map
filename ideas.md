@@ -1,5 +1,27 @@
 # Sullivan's Crossing Fan Map – Design Ideas
 
+## Site Structure (Fan-Site Expansion)
+
+The project grew from a single interactive map into a full fan destination while
+keeping the "Maritime Cartographic Romance" look. Three routes share a common
+`SiteNav` + `SiteFooter`:
+
+- **`/` — Home (landing).** Cinematic hero, animated stats, "About the Show",
+  region explorer, fan-favourite public spots, a trip-planner teaser, cast &
+  characters, and where-to-watch. Built from verified show facts and the
+  location dataset.
+- **`/map` — Interactive Map.** The original map experience (colour-coded pins,
+  season/category filters, search, mobile bottom sheet), now reachable from the
+  rest of the site.
+- **`/trip` — Plan Your Trip.** Five curated fan itineraries plus a build-your-own
+  route tool that chains any set of locations into one multi-stop Google Maps
+  route.
+
+Data layers:
+- `client/src/data/locations.ts` — the 37 confirmed filming locations (source of truth).
+- `client/src/data/show.ts` — show info, cast, where-to-watch, regions and
+  itineraries, all derived from or referencing the locations dataset.
+
 ## Chosen Approach: Maritime Cartographic Romance
 
 **Design Movement:** Vintage Nautical Cartography meets Warm Coastal Romanticism
