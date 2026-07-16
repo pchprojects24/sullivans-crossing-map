@@ -126,6 +126,7 @@ export function MapView({
   const map = useRef<google.maps.Map | null>(null);
 
   const init = usePersistFn(async () => {
+    if (!API_KEY) return;
     await loadMapScript();
     if (!mapContainer.current) {
       console.error("Map container not found");
@@ -148,6 +149,27 @@ export function MapView({
   useEffect(() => {
     init();
   }, [init]);
+
+  if (!API_KEY) {
+    return (
+      <div
+        className={cn(
+          "w-full h-[500px] flex items-center justify-center bg-muted",
+          className,
+        )}
+      >
+        <div className="max-w-md px-6 text-center text-muted-foreground">
+          <p className="font-semibold mb-1">Map unavailable</p>
+          <p className="text-sm">
+            The interactive map needs a Maps API key at build time (the
+            <code className="mx-1">VITE_FRONTEND_FORGE_API_KEY</code>
+            environment variable). All location details are still available in
+            the list.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div ref={mapContainer} className={cn("w-full h-[500px]", className)} />
