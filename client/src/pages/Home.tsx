@@ -1,810 +1,701 @@
 /**
- * Sullivan's Crossing – Nova Scotia Filming Locations Fan Map
- * Landing page: hero header + interactive map with always-visible legend
- * Desktop: left sidebar (38%) with pinned legend + right map canvas (62%)
- * Mobile: full-screen map + draggable bottom sheet
+ * Sullivan's Crossing Fan Site – Landing page
+ * A cinematic home that introduces the show and guides fans into the
+ * interactive map, the regional guides and the trip planner.
  */
 
-import { MapView } from "@/components/Map";
-import { useRef, useState, useCallback, useEffect } from "react";
-import { useIsMobile } from "@/hooks/useMobile";
+import { Link } from "wouter";
+import SiteNav from "@/components/SiteNav";
+import SiteFooter from "@/components/SiteFooter";
+import Reveal, { CountUp } from "@/components/Reveal";
 import {
-  locations,
-  categoryGroups,
-  seasonColors,
-  getMarkerColor,
-  getMapsUrl,
-  type Location,
-} from "@/data/locations";
+  show,
+  stats,
+  regions,
+  cast,
+  whereToWatch,
+  getLocationsByIds,
+  itineraries,
+} from "@/data/show";
+import { getMapsUrl, getMarkerColor } from "@/data/locations";
 
-// ── Season filter config ────────────────────────────────────────────────────
-const SEASON_FILTERS = [
-  { label: "All", value: "all" },
-  { label: "S1", value: "Season 1" },
-  { label: "S2", value: "Season 2" },
-  { label: "S3", value: "Season 3" },
-  { label: "S4", value: "Season 4" },
-  { label: "All Seasons", value: "All Seasons" },
-  { label: "Multi", value: "Multiple Seasons" },
-];
+const NAVY = "oklch(0.22 0.06 220)";
+const NAVY_DEEP = "oklch(0.17 0.05 220)";
+const PARCHMENT = "oklch(0.94 0.025 75)";
+const PARCHMENT_LT = "oklch(0.97 0.015 75)";
+const TEAL = "oklch(0.52 0.10 185)";
+const TEAL_LT = "oklch(0.66 0.09 185)";
+const AMBER = "oklch(0.62 0.13 70)";
+const MUTED = "oklch(0.45 0.05 220)";
 
-function matchesSeason(loc: Location, filter: string): boolean {
-  if (filter === "all") return true;
-  if (filter === "Season 1")
-    return ["Season 1", "Seasons 1 & 2", "All Seasons", "Multiple Seasons"].includes(loc.season);
-  if (filter === "Season 2")
-    return ["Season 2", "Seasons 1 & 2", "Seasons 2 & 3", "Season 2+", "All Seasons", "Multiple Seasons"].includes(loc.season);
-  if (filter === "Season 3")
-    return ["Season 3", "Seasons 2 & 3", "Season 2+", "All Seasons", "Multiple Seasons"].includes(loc.season);
-  if (filter === "Season 4")
-    return ["Season 4", "All Seasons", "Multiple Seasons"].includes(loc.season);
-  return loc.season === filter;
-}
+const FAN_FAVOURITE_IDS = [25, 4, 27, 30, 18, 21];
 
-// ── Small reusable badges ───────────────────────────────────────────────────
-function SeasonBadge({ season }: { season: string }) {
-  const color = seasonColors[season] || "#5a5a7a";
-  return (
-    <span style={{
-      display: "inline-block", fontSize: 11, fontWeight: 600,
-      padding: "2px 8px", borderRadius: 20,
-      backgroundColor: color + "22", color,
-      border: `1px solid ${color}44`,
-      lineHeight: 1.6,
-    }}>
-      {season}
-    </span>
-  );
-}
+// Topographic-line texture as an inline SVG data URI for the hero.
+const TOPO =
+  "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140' viewBox='0 0 140 140'%3E%3Cg fill='none' stroke='%232d7d7d' stroke-width='1' opacity='0.14'%3E%3Cpath d='M-20 40 Q 40 10 70 40 T 160 40'/%3E%3Cpath d='M-20 70 Q 40 40 70 70 T 160 70'/%3E%3Cpath d='M-20 100 Q 40 70 70 100 T 160 100'/%3E%3Cpath d='M-20 130 Q 40 100 70 130 T 160 130'/%3E%3C/g%3E%3C/svg%3E\")";
 
-function AccessBadge({ publicAccess }: { publicAccess: boolean }) {
-  return (
-    <span style={{
-      display: "inline-block", fontSize: 11,
-      padding: "2px 8px", borderRadius: 20,
-      backgroundColor: publicAccess ? "#4a7c5922" : "#c8860a22",
-      color: publicAccess ? "#2d5a3d" : "#8b5e0a",
-      border: `1px solid ${publicAccess ? "#4a7c5944" : "#c8860a44"}`,
-      lineHeight: 1.6,
-    }}>
-      {publicAccess ? "✓ Public" : "⚠ Private"}
-    </span>
-  );
-}
-
-// ── Legend component (used in both sidebar and mobile sheet) ────────────────
-function MapLegend({ compact = false }: { compact?: boolean }) {
-  return (
-    <div style={{
-      padding: compact ? "10px 14px 12px" : "14px 16px 16px",
-      borderTop: "2px solid oklch(0.82 0.030 75)",
-      background: "oklch(0.22 0.06 220)",
-      flexShrink: 0,
-    }}>
-      <h4 style={{
-        fontFamily: "var(--font-display)",
-        fontSize: compact ? 10 : 11,
-        fontWeight: 700,
-        color: "oklch(0.75 0.09 185)",
-        letterSpacing: "0.10em",
-        textTransform: "uppercase",
-        marginBottom: compact ? 8 : 10,
-      }}>
-        Map Legend
-      </h4>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: compact ? "6px 12px" : "7px 14px" }}>
-        {categoryGroups.map((g) => (
-          <div key={g.label} style={{ display: "flex", alignItems: "center", gap: 5 }}>
-            <div style={{
-              width: 11, height: 11,
-              borderRadius: "50% 50% 50% 0",
-              transform: "rotate(-45deg)",
-              background: g.color,
-              border: "1.5px solid oklch(0.40 0.04 220)",
-              boxShadow: "0 1px 3px rgba(0,0,0,0.35)",
-              flexShrink: 0,
-            }} />
-            <span style={{
-              fontSize: compact ? 10 : 11,
-              color: "oklch(0.80 0.025 75)",
-              fontWeight: 500,
-            }}>
-              {g.label}
-            </span>
-          </div>
-        ))}
-      </div>
-      <div style={{
-        marginTop: compact ? 8 : 10,
-        paddingTop: compact ? 6 : 8,
-        borderTop: "1px solid oklch(0.30 0.05 220)",
-        fontSize: 9,
-        color: "oklch(0.55 0.04 220)",
-        lineHeight: 1.5,
-      }}>
-        Sources: Nova Scotia Tourism · Atlas of Wonders · IMDB · CBC · Playback Online · Screen Nova Scotia
-      </div>
-    </div>
-  );
-}
-
-// ── Location card (used in sidebar list and mobile sheet) ───────────────────
-function LocationCard({
-  loc, idx, isSelected, onSelect, compact = false,
-}: {
-  loc: Location; idx: number; isSelected: boolean; onSelect: () => void; compact?: boolean;
-}) {
-  const color = getMarkerColor(loc);
+function SectionLabel({ children, color = TEAL }: { children: React.ReactNode; color?: string }) {
   return (
     <div
-      onClick={onSelect}
       style={{
-        padding: compact ? "11px 14px" : "13px 16px",
-        borderBottom: "1px solid oklch(0.88 0.025 75)",
-        cursor: "pointer",
-        background: isSelected ? "oklch(0.97 0.015 75)" : "transparent",
-        borderLeft: isSelected ? `3px solid ${color}` : "3px solid transparent",
-        transition: "all 150ms cubic-bezier(0.23,1,0.32,1)",
-        touchAction: "manipulation",
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 8,
+        fontSize: 12,
+        fontWeight: 700,
+        letterSpacing: "0.16em",
+        textTransform: "uppercase",
+        color,
+        marginBottom: 14,
       }}
     >
-      <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
-        <div style={{
-          width: 20, height: 20,
-          borderRadius: "50% 50% 50% 0",
-          transform: "rotate(-45deg)",
-          background: color, flexShrink: 0, marginTop: 3,
-          border: "2px solid white",
-          boxShadow: "0 1px 4px rgba(0,0,0,0.25)",
-        }} />
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <h3 style={{
-            fontFamily: "var(--font-display)", fontWeight: 700,
-            fontSize: compact ? 13 : 14,
-            color: "oklch(0.22 0.06 220)", lineHeight: 1.3, marginBottom: 2,
-          }}>
-            {idx + 1}. {loc.name}
-          </h3>
-          <p style={{
-            fontSize: compact ? 11 : 12,
-            color: "oklch(0.52 0.10 185)", fontStyle: "italic",
-            marginBottom: 5, lineHeight: 1.3,
-          }}>
-            {loc.showName}
-          </p>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-            <SeasonBadge season={loc.season} />
-            <AccessBadge publicAccess={loc.publicAccess} />
-          </div>
-
-          {isSelected && (
-            <div style={{
-              marginTop: 10, padding: "10px 12px",
-              background: "oklch(0.93 0.022 75)", borderRadius: 8,
-              fontSize: compact ? 12 : 13,
-              color: "oklch(0.30 0.06 220)", lineHeight: 1.6,
-              animation: "fadeIn 150ms ease-out",
-            }}>
-              <p style={{ marginBottom: 8 }}>{loc.description}</p>
-              <div style={{
-                padding: "8px 10px", background: "oklch(0.88 0.030 75)",
-                borderRadius: 6, borderLeft: `3px solid ${color}`, marginBottom: 8,
-              }}>
-                <span style={{
-                  fontSize: 10, fontWeight: 700, textTransform: "uppercase",
-                  letterSpacing: "0.06em", color,
-                }}>
-                  Fan Tip
-                </span>
-                <p style={{ fontSize: 12, color: "oklch(0.30 0.06 220)", marginTop: 3 }}>
-                  {loc.visitorTip}
-                </p>
-              </div>
-              <div style={{ fontSize: 12, color: "oklch(0.50 0.04 220)", marginBottom: 8 }}>
-                📍 {loc.address}
-              </div>
-              <a
-                href={getMapsUrl(loc)}
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={(e) => e.stopPropagation()}
-                style={{
-                  display: "inline-block", padding: "6px 14px",
-                  background: color, color: "white", borderRadius: 7,
-                  fontSize: 12, fontWeight: 600, textDecoration: "none",
-                  touchAction: "manipulation",
-                }}
-              >
-                Open in Google Maps →
-              </a>
-            </div>
-          )}
-        </div>
-      </div>
+      <span style={{ width: 26, height: 2, background: color, borderRadius: 2 }} />
+      {children}
     </div>
   );
 }
 
-// ── Mobile bottom sheet snap positions ─────────────────────────────────────
-const SHEET_PEEK = 0.72;
-const SHEET_HALF = 0.42;
-const SHEET_FULL = 0.06;
-
-// ── Main page component ─────────────────────────────────────────────────────
 export default function Home() {
-  const isMobile = useIsMobile();
-  const mapRef = useRef<google.maps.Map | null>(null);
-  const markersRef = useRef<Map<number, google.maps.marker.AdvancedMarkerElement>>(new Map());
-  const infoWindowRef = useRef<google.maps.InfoWindow | null>(null);
-  const cardRefs = useRef<Map<number, HTMLDivElement>>(new Map());
-
-  const [selectedId, setSelectedId] = useState<number | null>(null);
-  const [seasonFilter, setSeasonFilter] = useState("all");
-  const [categoryFilter, setCategoryFilter] = useState("all");
-  const [searchQuery, setSearchQuery] = useState("");
-  const [sheetSnap, setSheetSnap] = useState<"peek" | "half" | "full">("peek");
-  const [mobileLegendOpen, setMobileLegendOpen] = useState(false);
-
-  const dragStartY = useRef<number | null>(null);
-  const dragStartSnap = useRef<"peek" | "half" | "full">("peek");
-
-  const filteredLocations = locations.filter((loc) => {
-    const matchSeason = matchesSeason(loc, seasonFilter);
-    const matchCat =
-      categoryFilter === "all" ||
-      categoryGroups.find((g) => g.label === categoryFilter)?.categories.includes(loc.category);
-    const matchSearch =
-      searchQuery === "" ||
-      loc.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      loc.showName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      loc.description.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchSeason && matchCat && matchSearch;
-  });
-
-  const selectLocation = useCallback((loc: Location) => {
-    setSelectedId(loc.id);
-    if (mapRef.current) {
-      mapRef.current.panTo({ lat: loc.lat, lng: loc.lon });
-      mapRef.current.setZoom(14);
-    }
-    if (isMobile) setSheetSnap("half");
-    setTimeout(() => {
-      cardRefs.current.get(loc.id)?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-    }, 200);
-  }, [isMobile]);
-
-  const handleMapReady = useCallback((map: google.maps.Map) => {
-    mapRef.current = map;
-    infoWindowRef.current = new google.maps.InfoWindow();
-
-    map.setOptions({
-      styles: [
-        { elementType: "geometry", stylers: [{ color: "#e8dfd0" }] },
-        { elementType: "labels.text.fill", stylers: [{ color: "#1a2e3b" }] },
-        { elementType: "labels.text.stroke", stylers: [{ color: "#f5ede0" }] },
-        { featureType: "water", elementType: "geometry", stylers: [{ color: "#a8c8d8" }] },
-        { featureType: "water", elementType: "labels.text.fill", stylers: [{ color: "#1a2e3b" }] },
-        { featureType: "road", elementType: "geometry", stylers: [{ color: "#d4c5b0" }] },
-        { featureType: "road", elementType: "geometry.stroke", stylers: [{ color: "#c4b5a0" }] },
-        { featureType: "road.highway", elementType: "geometry", stylers: [{ color: "#c8a87a" }] },
-        { featureType: "poi.park", elementType: "geometry", stylers: [{ color: "#c8d8b8" }] },
-        { featureType: "poi.park", elementType: "labels.text.fill", stylers: [{ color: "#4a7c59" }] },
-        { featureType: "administrative", elementType: "geometry.stroke", stylers: [{ color: "#b0a090" }] },
-        { featureType: "poi", elementType: "geometry", stylers: [{ color: "#ddd5c8" }] },
-        { featureType: "poi", elementType: "labels.text.fill", stylers: [{ color: "#6b5b45" }] },
-        { featureType: "transit", elementType: "geometry", stylers: [{ color: "#c8b898" }] },
-      ],
-      gestureHandling: "greedy",
-      zoomControlOptions: { position: google.maps.ControlPosition.RIGHT_CENTER },
-    });
-
-    locations.forEach((loc) => {
-      const color = getMarkerColor(loc);
-      const pinEl = document.createElement("div");
-      pinEl.style.cssText = `
-        width:24px;height:24px;border-radius:50% 50% 50% 0;
-        transform:rotate(-45deg);background:${color};
-        border:2.5px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.35);
-        cursor:pointer;transition:transform 120ms cubic-bezier(0.23,1,0.32,1),box-shadow 120ms;
-      `;
-      const marker = new google.maps.marker.AdvancedMarkerElement({
-        map, position: { lat: loc.lat, lng: loc.lon }, title: loc.name, content: pinEl,
-      });
-      marker.addListener("click", () => {
-        selectLocation(loc);
-        if (infoWindowRef.current) {
-          infoWindowRef.current.setContent(`
-            <div style="font-family:'Source Sans 3',sans-serif;max-width:200px;padding:4px 2px;">
-              <div style="font-family:'Playfair Display',serif;font-weight:700;font-size:13px;color:#1a2e3b;margin-bottom:3px;line-height:1.3;">${loc.name}</div>
-              <div style="font-size:11px;color:#2d7d7d;font-style:italic;margin-bottom:4px;">${loc.showName}</div>
-              <div style="font-size:10px;color:#6b5b45;background:#f5ede0;padding:2px 6px;border-radius:4px;display:inline-block;">${loc.season}</div>
-            </div>
-          `);
-          infoWindowRef.current.open(map, marker);
-        }
-      });
-      markersRef.current.set(loc.id, marker);
-    });
-  }, [selectLocation]);
-
-  // Update marker visibility when filters change
-  useEffect(() => {
-    const ids = new Set(filteredLocations.map((l) => l.id));
-    markersRef.current.forEach((marker, id) => {
-      marker.map = ids.has(id) ? mapRef.current : null;
-    });
-  }, [filteredLocations]);
-
-  // Highlight selected marker
-  useEffect(() => {
-    markersRef.current.forEach((marker, id) => {
-      const el = marker.content as HTMLElement;
-      if (!el) return;
-      el.style.transform = id === selectedId
-        ? "rotate(-45deg) scale(1.35)"
-        : "rotate(-45deg) scale(1)";
-      el.style.boxShadow = id === selectedId
-        ? "0 6px 18px rgba(0,0,0,0.5)"
-        : "0 2px 6px rgba(0,0,0,0.35)";
-    });
-  }, [selectedId]);
-
-  // Bottom sheet drag
-  const onDragStart = (y: number) => { dragStartY.current = y; dragStartSnap.current = sheetSnap; };
-  const onDragEnd = (y: number) => {
-    if (dragStartY.current === null) return;
-    const delta = y - dragStartY.current;
-    dragStartY.current = null;
-    if (Math.abs(delta) < 10) return;
-    if (delta < -60) setSheetSnap(dragStartSnap.current === "peek" ? "half" : "full");
-    else if (delta > 60) setSheetSnap(dragStartSnap.current === "full" ? "half" : "peek");
-  };
-
-  const sheetTop = sheetSnap === "peek" ? SHEET_PEEK : sheetSnap === "half" ? SHEET_HALF : SHEET_FULL;
-  const selectedLocation = locations.find((l) => l.id === selectedId);
+  const favourites = getLocationsByIds(FAN_FAVOURITE_IDS);
 
   return (
-    <div style={{
-      height: "100dvh", display: "flex", flexDirection: "column",
-      background: "oklch(0.94 0.025 75)", overflow: "hidden",
-    }}>
+    <div style={{ background: PARCHMENT, minHeight: "100vh" }}>
+      <SiteNav transparent />
 
-      {/* ── Hero Header ───────────────────────────────────────────────────── */}
-      <header style={{
-        flexShrink: 0, zIndex: 50,
-        background: "oklch(0.22 0.06 220)",
-        borderBottom: "2px solid oklch(0.62 0.13 70 / 0.5)",
-      }}>
-        <div style={{
-          padding: isMobile ? "10px 14px" : "0 20px",
-          display: "flex", alignItems: "center",
-          justifyContent: "space-between", gap: 12,
-          minHeight: isMobile ? "auto" : 56,
-        }}>
-          {/* Brand */}
-          <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-            <div style={{
-              width: 36, height: 36, borderRadius: "50%",
-              background: "oklch(0.62 0.13 70)",
-              display: "flex", alignItems: "center", justifyContent: "center",
-              fontSize: 16, flexShrink: 0,
-              boxShadow: "0 2px 8px rgba(0,0,0,0.3)",
-            }}>⚓</div>
-            <div style={{ minWidth: 0 }}>
-              <h1 style={{
-                fontFamily: "var(--font-display)",
-                color: "oklch(0.96 0.015 75)",
-                fontSize: "clamp(14px, 3.5vw, 19px)",
-                fontWeight: 700, lineHeight: 1.1,
-                whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
-              }}>
-                Sullivan's Crossing
-              </h1>
-              <p style={{
-                color: "oklch(0.62 0.09 185)",
-                fontSize: "clamp(9px, 2vw, 10px)",
-                letterSpacing: "0.10em", textTransform: "uppercase",
-              }}>
-                Nova Scotia Filming Locations · {locations.length} confirmed spots
-              </p>
+      {/* ── HERO ──────────────────────────────────────────────────────────── */}
+      <section
+        style={{
+          position: "relative",
+          background: `radial-gradient(1200px 600px at 75% -10%, oklch(0.30 0.07 200) 0%, transparent 55%), linear-gradient(160deg, ${NAVY} 0%, ${NAVY_DEEP} 100%)`,
+          overflow: "hidden",
+        }}
+      >
+        <div style={{ position: "absolute", inset: 0, backgroundImage: TOPO, backgroundSize: "280px 280px", opacity: 1 }} />
+        {/* glow */}
+        <div
+          style={{
+            position: "absolute",
+            top: "-30%",
+            right: "-10%",
+            width: 520,
+            height: 520,
+            borderRadius: "50%",
+            background: "radial-gradient(circle, oklch(0.62 0.13 70 / 0.22) 0%, transparent 70%)",
+            pointerEvents: "none",
+          }}
+        />
+
+        <div
+          style={{
+            position: "relative",
+            maxWidth: 1100,
+            margin: "0 auto",
+            padding: "clamp(56px, 10vw, 110px) clamp(18px, 5vw, 28px) clamp(48px, 8vw, 88px)",
+          }}
+        >
+          <Reveal>
+            <div
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 8,
+                padding: "6px 14px",
+                borderRadius: 30,
+                background: "oklch(0.62 0.13 70 / 0.16)",
+                border: "1px solid oklch(0.62 0.13 70 / 0.4)",
+                color: "oklch(0.82 0.11 70)",
+                fontSize: 12.5,
+                fontWeight: 600,
+                letterSpacing: "0.06em",
+                marginBottom: 22,
+              }}
+            >
+              ⚓ The unofficial fan travel guide
             </div>
-          </div>
+          </Reveal>
 
-          {/* Season filter pills */}
-          <div style={{ display: "flex", gap: 4, flexWrap: "wrap", justifyContent: "flex-end" }}>
-            {SEASON_FILTERS.map((s) => (
-              <button key={s.value} onClick={() => setSeasonFilter(s.value)} style={{
-                padding: "3px 9px", borderRadius: 20,
-                fontSize: "clamp(10px, 2.2vw, 11px)", fontWeight: 600,
-                letterSpacing: "0.03em", cursor: "pointer",
-                transition: "all 150ms cubic-bezier(0.23,1,0.32,1)",
-                background: seasonFilter === s.value ? "oklch(0.62 0.13 70)" : "oklch(0.28 0.06 220)",
-                color: seasonFilter === s.value ? "oklch(0.22 0.06 220)" : "oklch(0.78 0.03 75)",
-                border: "1px solid oklch(0.38 0.06 220)",
-                minHeight: 28, touchAction: "manipulation",
-              }}>
-                {s.label}
-              </button>
+          <Reveal delay={70}>
+            <h1
+              style={{
+                fontFamily: "var(--font-display)",
+                color: PARCHMENT_LT,
+                fontWeight: 700,
+                fontSize: "clamp(38px, 8vw, 82px)",
+                lineHeight: 1.02,
+                letterSpacing: "-0.01em",
+                margin: 0,
+              }}
+            >
+              Sullivan's Crossing
+              <br />
+              <span style={{ fontStyle: "italic", color: TEAL_LT, fontWeight: 400 }}>
+                filmed in Nova Scotia
+              </span>
+            </h1>
+          </Reveal>
+
+          <Reveal delay={140}>
+            <p
+              style={{
+                marginTop: 22,
+                maxWidth: 620,
+                fontSize: "clamp(16px, 2.4vw, 20px)",
+                lineHeight: 1.6,
+                color: "oklch(0.82 0.03 75)",
+              }}
+            >
+              Every windswept lighthouse, cozy diner booth and lakeside campground has a
+              real address. Explore all {stats.total} confirmed filming locations, plan a
+              road trip, and stand exactly where Maggie, Cal and Sully do.
+            </p>
+          </Reveal>
+
+          <Reveal delay={210}>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 32 }}>
+              <Link
+                href="/map"
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 8,
+                  padding: "13px 24px",
+                  borderRadius: 12,
+                  background: AMBER,
+                  color: NAVY,
+                  fontWeight: 700,
+                  fontSize: 15.5,
+                  textDecoration: "none",
+                  boxShadow: "0 8px 24px oklch(0.62 0.13 70 / 0.35)",
+                }}
+              >
+                🗺 Explore the Interactive Map
+              </Link>
+              <Link
+                href="/trip"
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 8,
+                  padding: "13px 24px",
+                  borderRadius: 12,
+                  background: "oklch(1 0 0 / 0.06)",
+                  color: PARCHMENT_LT,
+                  fontWeight: 600,
+                  fontSize: 15.5,
+                  textDecoration: "none",
+                  border: "1px solid oklch(1 0 0 / 0.18)",
+                }}
+              >
+                Plan Your Trip →
+              </Link>
+            </div>
+          </Reveal>
+
+          {/* Stats strip */}
+          <Reveal delay={300}>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))",
+                gap: 1,
+                marginTop: 56,
+                background: "oklch(1 0 0 / 0.1)",
+                border: "1px solid oklch(1 0 0 / 0.1)",
+                borderRadius: 16,
+                overflow: "hidden",
+              }}
+            >
+              {[
+                { label: "Filming Locations", value: stats.total },
+                { label: "Seasons", value: stats.seasons },
+                { label: "Regions to Explore", value: stats.regions },
+                { label: "Open to the Public", value: stats.publicAccess },
+              ].map((s) => (
+                <div key={s.label} style={{ background: "oklch(0.20 0.055 220)", padding: "20px 16px", textAlign: "center" }}>
+                  <div
+                    style={{
+                      fontFamily: "var(--font-display)",
+                      fontSize: "clamp(30px, 5vw, 44px)",
+                      fontWeight: 700,
+                      color: AMBER,
+                      lineHeight: 1,
+                    }}
+                  >
+                    <CountUp to={s.value} />
+                  </div>
+                  <div
+                    style={{
+                      marginTop: 8,
+                      fontSize: 11.5,
+                      letterSpacing: "0.08em",
+                      textTransform: "uppercase",
+                      color: "oklch(0.7 0.03 185)",
+                    }}
+                  >
+                    {s.label}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Reveal>
+        </div>
+      </section>
+
+      {/* ── ABOUT ─────────────────────────────────────────────────────────── */}
+      <section style={{ maxWidth: 1100, margin: "0 auto", padding: "clamp(56px, 9vw, 96px) clamp(18px, 5vw, 28px)" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.4fr) minmax(0, 1fr)", gap: "clamp(28px, 5vw, 64px)", alignItems: "start" }} className="about-grid">
+          <Reveal>
+            <SectionLabel>About the Show</SectionLabel>
+            <h2 style={{ fontFamily: "var(--font-display)", fontSize: "clamp(26px, 4.5vw, 40px)", fontWeight: 700, color: NAVY, lineHeight: 1.12, margin: 0 }}>
+              {show.tagline}
+            </h2>
+            <p style={{ marginTop: 20, fontSize: 17, lineHeight: 1.7, color: "oklch(0.32 0.05 220)" }}>
+              {show.premise}
+            </p>
+            <p style={{ marginTop: 16, fontSize: 15.5, lineHeight: 1.7, color: MUTED }}>
+              {show.basedOn} {show.filmedIn}
+            </p>
+          </Reveal>
+
+          <Reveal delay={120}>
+            <div
+              style={{
+                background: NAVY,
+                borderRadius: 18,
+                padding: "26px 24px",
+                boxShadow: "0 20px 50px oklch(0.22 0.06 220 / 0.18)",
+              }}
+            >
+              <div style={{ fontFamily: "var(--font-display)", fontSize: 13, fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", color: TEAL_LT, marginBottom: 18 }}>
+                Quick Facts
+              </div>
+              {[
+                { k: "Premiered", v: show.premiere },
+                { k: "Seasons", v: `${show.seasons} (${show.years})` },
+                { k: "Filmed in", v: "Nova Scotia, Canada" },
+                { k: "Based on", v: "Robyn Carr's novels" },
+              ].map((row, i, arr) => (
+                <div
+                  key={row.k}
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    gap: 14,
+                    padding: "12px 0",
+                    borderBottom: i < arr.length - 1 ? "1px solid oklch(1 0 0 / 0.1)" : "none",
+                  }}
+                >
+                  <span style={{ fontSize: 13, color: "oklch(0.68 0.03 185)", letterSpacing: "0.04em" }}>{row.k}</span>
+                  <span style={{ fontSize: 14, fontWeight: 600, color: PARCHMENT_LT, textAlign: "right" }}>{row.v}</span>
+                </div>
+              ))}
+            </div>
+          </Reveal>
+        </div>
+      </section>
+
+      {/* ── REGIONS ───────────────────────────────────────────────────────── */}
+      <section style={{ background: PARCHMENT_LT, borderTop: "1px solid oklch(0.85 0.025 75)", borderBottom: "1px solid oklch(0.85 0.025 75)" }}>
+        <div style={{ maxWidth: 1100, margin: "0 auto", padding: "clamp(56px, 9vw, 96px) clamp(18px, 5vw, 28px)" }}>
+          <Reveal>
+            <SectionLabel>Explore by Region</SectionLabel>
+            <h2 style={{ fontFamily: "var(--font-display)", fontSize: "clamp(26px, 4.5vw, 40px)", fontWeight: 700, color: NAVY, margin: 0, maxWidth: 620, lineHeight: 1.12 }}>
+              Six corners of Nova Scotia, one show
+            </h2>
+          </Reveal>
+
+          <div
+            style={{
+              marginTop: 40,
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))",
+              gap: 18,
+            }}
+          >
+            {regions.map((r, i) => (
+              <Reveal key={r.id} delay={i * 60}>
+                <Link
+                  href="/map"
+                  style={{
+                    display: "block",
+                    height: "100%",
+                    background: PARCHMENT,
+                    borderRadius: 16,
+                    padding: "22px 22px 20px",
+                    textDecoration: "none",
+                    border: "1px solid oklch(0.85 0.025 75)",
+                    borderTop: `4px solid ${r.color}`,
+                    transition: "transform 200ms cubic-bezier(0.23,1,0.32,1), box-shadow 200ms",
+                  }}
+                  className="region-card"
+                >
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+                    <span style={{ fontSize: 30 }}>{r.emoji}</span>
+                    <span
+                      style={{
+                        fontSize: 12,
+                        fontWeight: 700,
+                        color: r.color,
+                        background: r.color + "1a",
+                        padding: "4px 10px",
+                        borderRadius: 20,
+                      }}
+                    >
+                      {r.locationIds.length} spots
+                    </span>
+                  </div>
+                  <h3 style={{ fontFamily: "var(--font-display)", fontSize: 20, fontWeight: 700, color: NAVY, margin: 0, lineHeight: 1.2 }}>
+                    {r.name}
+                  </h3>
+                  <div style={{ fontSize: 12.5, color: TEAL, fontStyle: "italic", marginTop: 3, fontWeight: 600 }}>
+                    {r.tagline}
+                  </div>
+                  <p style={{ marginTop: 12, fontSize: 14, lineHeight: 1.6, color: MUTED }}>{r.blurb}</p>
+                  <div style={{ marginTop: 14, fontSize: 13.5, fontWeight: 700, color: r.color }}>View on map →</div>
+                </Link>
+              </Reveal>
             ))}
           </div>
         </div>
-      </header>
+      </section>
 
-      {/* ── Main content ──────────────────────────────────────────────────── */}
-      <div style={{ flex: 1, display: "flex", minHeight: 0, position: "relative" }}>
+      {/* ── FAN FAVOURITES ────────────────────────────────────────────────── */}
+      <section style={{ maxWidth: 1100, margin: "0 auto", padding: "clamp(56px, 9vw, 96px) clamp(18px, 5vw, 28px)" }}>
+        <Reveal>
+          <SectionLabel color={AMBER}>Fan Favourites</SectionLabel>
+          <h2 style={{ fontFamily: "var(--font-display)", fontSize: "clamp(26px, 4.5vw, 40px)", fontWeight: 700, color: NAVY, margin: 0, maxWidth: 640, lineHeight: 1.12 }}>
+            Six spots you can actually visit
+          </h2>
+          <p style={{ marginTop: 14, fontSize: 16, color: MUTED, maxWidth: 620, lineHeight: 1.6 }}>
+            Order the smoked-meat sandwich, walk the granite at Peggy's Cove, or book a night
+            in Cal's cabin — these public locations are the easiest way to step into the show.
+          </p>
+        </Reveal>
 
-        {/* ── Desktop sidebar ─────────────────────────────────────────────── */}
-        {!isMobile && (
-          <aside style={{
-            width: "clamp(280px, 36%, 410px)", flexShrink: 0,
-            display: "flex", flexDirection: "column",
-            background: "oklch(0.97 0.015 75)",
-            borderRight: "1px solid oklch(0.82 0.030 75)",
-            overflow: "hidden",
-          }}>
-            {/* Search + Category filters */}
-            <div style={{
-              padding: "12px 14px", flexShrink: 0,
-              borderBottom: "1px solid oklch(0.85 0.025 75)",
-              background: "oklch(0.99 0.010 75)",
-            }}>
-              <input
-                type="text"
-                placeholder="Search locations, show names…"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                style={{
-                  width: "100%", padding: "7px 12px", borderRadius: 8,
-                  border: "1px solid oklch(0.82 0.030 75)",
-                  background: "oklch(0.99 0.010 75)",
-                  fontFamily: "var(--font-body)", fontSize: 13,
-                  color: "oklch(0.22 0.06 220)", outline: "none",
-                  marginBottom: 8, boxSizing: "border-box",
-                }}
-              />
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-                <button
-                  onClick={() => setCategoryFilter("all")}
+        <div
+          style={{
+            marginTop: 40,
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))",
+            gap: 18,
+          }}
+        >
+          {favourites.map((loc, i) => {
+            const color = getMarkerColor(loc);
+            return (
+              <Reveal key={loc.id} delay={i * 60} style={{ height: "100%" }}>
+                <div
                   style={{
-                    padding: "3px 9px", borderRadius: 12,
-                    fontSize: 11, fontWeight: 600, cursor: "pointer",
-                    transition: "all 150ms",
-                    background: categoryFilter === "all" ? "oklch(0.22 0.06 220)" : "oklch(0.90 0.020 75)",
-                    color: categoryFilter === "all" ? "oklch(0.94 0.025 75)" : "oklch(0.40 0.05 220)",
-                    border: "1px solid oklch(0.80 0.025 75)",
+                    height: "100%",
+                    display: "flex",
+                    flexDirection: "column",
+                    background: PARCHMENT_LT,
+                    borderRadius: 16,
+                    overflow: "hidden",
+                    border: "1px solid oklch(0.85 0.025 75)",
+                    boxShadow: "0 8px 24px oklch(0.22 0.06 220 / 0.06)",
                   }}
                 >
-                  All Types
-                </button>
-                {categoryGroups.map((g) => (
-                  <button key={g.label} onClick={() => setCategoryFilter(g.label)} style={{
-                    padding: "3px 9px", borderRadius: 12,
-                    fontSize: 11, fontWeight: 600, cursor: "pointer",
-                    transition: "all 150ms",
-                    background: categoryFilter === g.label ? g.color : "oklch(0.90 0.020 75)",
-                    color: categoryFilter === g.label ? "white" : "oklch(0.40 0.05 220)",
-                    border: `1px solid ${categoryFilter === g.label ? g.color : "oklch(0.80 0.025 75)"}`,
-                  }}>
-                    {g.label}
-                  </button>
+                  <div style={{ height: 6, background: color }} />
+                  <div style={{ padding: "20px 20px 22px", display: "flex", flexDirection: "column", flex: 1 }}>
+                    <h3 style={{ fontFamily: "var(--font-display)", fontSize: 18.5, fontWeight: 700, color: NAVY, margin: 0, lineHeight: 1.22 }}>
+                      {loc.name}
+                    </h3>
+                    <div style={{ fontSize: 13, color: TEAL, fontStyle: "italic", marginTop: 4 }}>{loc.showName}</div>
+                    <div
+                      style={{
+                        marginTop: 14,
+                        padding: "11px 13px",
+                        background: color + "12",
+                        borderLeft: `3px solid ${color}`,
+                        borderRadius: 8,
+                        flex: 1,
+                      }}
+                    >
+                      <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color }}>
+                        Fan Tip
+                      </div>
+                      <p style={{ fontSize: 13.5, color: "oklch(0.32 0.05 220)", marginTop: 4, lineHeight: 1.55 }}>{loc.visitorTip}</p>
+                    </div>
+                    <a
+                      href={getMapsUrl(loc)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{
+                        marginTop: 16,
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 6,
+                        padding: "9px 16px",
+                        alignSelf: "flex-start",
+                        background: color,
+                        color: "white",
+                        borderRadius: 9,
+                        fontSize: 13,
+                        fontWeight: 700,
+                        textDecoration: "none",
+                      }}
+                    >
+                      Open in Google Maps →
+                    </a>
+                  </div>
+                </div>
+              </Reveal>
+            );
+          })}
+        </div>
+      </section>
+
+      {/* ── TRIP PLANNER TEASER ───────────────────────────────────────────── */}
+      <section style={{ background: `linear-gradient(155deg, ${NAVY} 0%, ${NAVY_DEEP} 100%)`, position: "relative", overflow: "hidden" }}>
+        <div style={{ position: "absolute", inset: 0, backgroundImage: TOPO, backgroundSize: "260px 260px", opacity: 0.7 }} />
+        <div style={{ position: "relative", maxWidth: 1100, margin: "0 auto", padding: "clamp(56px, 9vw, 96px) clamp(18px, 5vw, 28px)" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: "clamp(28px, 5vw, 56px)", alignItems: "center" }} className="about-grid">
+            <Reveal>
+              <SectionLabel color={TEAL_LT}>Plan Your Trip</SectionLabel>
+              <h2 style={{ fontFamily: "var(--font-display)", fontSize: "clamp(26px, 4.5vw, 40px)", fontWeight: 700, color: PARCHMENT_LT, margin: 0, lineHeight: 1.12 }}>
+                Turn the map into a road trip
+              </h2>
+              <p style={{ marginTop: 16, fontSize: 16.5, lineHeight: 1.65, color: "oklch(0.8 0.03 75)" }}>
+                Pick from {itineraries.length} ready-made fan itineraries — a walkable Halifax
+                diner crawl, the South Shore's postcard coastline, an overnight in Season 3's
+                Hubbards — or build your own route and open every stop in Google Maps with one tap.
+              </p>
+              <Link
+                href="/trip"
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 8,
+                  marginTop: 26,
+                  padding: "13px 24px",
+                  borderRadius: 12,
+                  background: AMBER,
+                  color: NAVY,
+                  fontWeight: 700,
+                  fontSize: 15.5,
+                  textDecoration: "none",
+                  boxShadow: "0 8px 24px oklch(0.62 0.13 70 / 0.3)",
+                }}
+              >
+                Start planning →
+              </Link>
+            </Reveal>
+
+            <Reveal delay={120}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                {itineraries.slice(0, 3).map((it) => (
+                  <div
+                    key={it.id}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 14,
+                      background: "oklch(1 0 0 / 0.06)",
+                      border: "1px solid oklch(1 0 0 / 0.12)",
+                      borderRadius: 14,
+                      padding: "16px 18px",
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: 46,
+                        height: 46,
+                        borderRadius: 12,
+                        background: it.color + "33",
+                        border: `1px solid ${it.color}`,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontSize: 22,
+                        flexShrink: 0,
+                      }}
+                    >
+                      {it.emoji}
+                    </div>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontFamily: "var(--font-display)", fontSize: 16, fontWeight: 700, color: PARCHMENT_LT }}>{it.name}</div>
+                      <div style={{ fontSize: 13, color: "oklch(0.72 0.03 185)", marginTop: 2 }}>
+                        {it.stopIds.length} stops · {it.duration}
+                      </div>
+                    </div>
+                  </div>
                 ))}
               </div>
-            </div>
-
-            {/* Location count */}
-            <div style={{
-              padding: "6px 14px", fontSize: 12,
-              color: "oklch(0.52 0.05 220)",
-              borderBottom: "1px solid oklch(0.88 0.025 75)", flexShrink: 0,
-              background: "oklch(0.97 0.015 75)",
-            }}>
-              <span style={{ fontWeight: 700, color: "oklch(0.22 0.06 220)" }}>
-                {filteredLocations.length}
-              </span>{" "}
-              of {locations.length} confirmed filming locations
-            </div>
-
-            {/* Scrollable location list */}
-            <div className="custom-scrollbar" style={{ overflowY: "auto", flex: 1 }}>
-              {filteredLocations.length === 0 ? (
-                <div style={{
-                  padding: "40px 20px", textAlign: "center",
-                  color: "oklch(0.55 0.04 220)",
-                  fontFamily: "var(--font-display)", fontStyle: "italic", fontSize: 15,
-                }}>
-                  No locations match your filters.
-                </div>
-              ) : (
-                filteredLocations.map((loc, idx) => (
-                  <div key={loc.id} ref={(el) => { if (el) cardRefs.current.set(loc.id, el); }}>
-                    <LocationCard
-                      loc={loc} idx={idx}
-                      isSelected={selectedId === loc.id}
-                      onSelect={() => selectLocation(loc)}
-                      compact
-                    />
-                  </div>
-                ))
-              )}
-            </div>
-
-            {/* Legend – always pinned at the bottom */}
-            <MapLegend compact />
-          </aside>
-        )}
-
-        {/* ── Map canvas ──────────────────────────────────────────────────── */}
-        <div style={{ flex: 1, position: "relative", minWidth: 0 }}>
-          <MapView
-            className="w-full h-full"
-            initialCenter={{ lat: 44.7, lng: -63.8 }}
-            initialZoom={9}
-            onMapReady={handleMapReady}
-          />
-
-          {/* Location count overlay */}
-          <div style={{
-            position: "absolute", top: 10, right: 10,
-            background: "oklch(0.22 0.06 220 / 0.90)",
-            color: "oklch(0.94 0.025 75)",
-            padding: "4px 12px", borderRadius: 20,
-            fontSize: 12, fontWeight: 700,
-            backdropFilter: "blur(4px)", zIndex: 5, pointerEvents: "none",
-          }}>
-            {filteredLocations.length} shown
+            </Reveal>
           </div>
+        </div>
+      </section>
 
-          {/* Mobile: legend toggle button */}
-          {isMobile && (
-            <button
-              onClick={() => setMobileLegendOpen((v) => !v)}
-              style={{
-                position: "absolute", bottom: `calc(${(1 - SHEET_PEEK) * 100}vh + 14px)`,
-                left: 12, zIndex: 25,
-                background: "oklch(0.22 0.06 220 / 0.92)",
-                color: "oklch(0.94 0.025 75)",
-                border: "1px solid oklch(0.38 0.06 220)",
-                borderRadius: 10, padding: "6px 12px",
-                fontSize: 12, fontWeight: 600, cursor: "pointer",
-                backdropFilter: "blur(4px)",
-                touchAction: "manipulation",
-              }}
-            >
-              {mobileLegendOpen ? "✕ Legend" : "🗺 Legend"}
-            </button>
-          )}
+      {/* ── CAST ──────────────────────────────────────────────────────────── */}
+      <section style={{ maxWidth: 1100, margin: "0 auto", padding: "clamp(56px, 9vw, 96px) clamp(18px, 5vw, 28px)" }}>
+        <Reveal>
+          <SectionLabel>Cast & Characters</SectionLabel>
+          <h2 style={{ fontFamily: "var(--font-display)", fontSize: "clamp(26px, 4.5vw, 40px)", fontWeight: 700, color: NAVY, margin: 0, lineHeight: 1.12 }}>
+            Who you'll be following
+          </h2>
+        </Reveal>
 
-          {/* Mobile: floating legend panel */}
-          {isMobile && mobileLegendOpen && (
-            <div style={{
-              position: "absolute",
-              bottom: `calc(${(1 - SHEET_PEEK) * 100}vh + 50px)`,
-              left: 10, right: 10,
-              background: "oklch(0.22 0.06 220 / 0.96)",
-              borderRadius: 12, overflow: "hidden",
-              boxShadow: "0 4px 20px rgba(0,0,0,0.4)",
-              zIndex: 26, animation: "fadeIn 150ms ease-out",
-            }}>
-              <div style={{ padding: "12px 14px" }}>
-                <h4 style={{
-                  fontFamily: "var(--font-display)", fontSize: 11, fontWeight: 700,
-                  color: "oklch(0.75 0.09 185)",
-                  letterSpacing: "0.10em", textTransform: "uppercase", marginBottom: 10,
-                }}>Map Legend</h4>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 14px" }}>
-                  {categoryGroups.map((g) => (
-                    <div key={g.label} style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                      <div style={{
-                        width: 10, height: 10, borderRadius: "50% 50% 50% 0",
-                        transform: "rotate(-45deg)", background: g.color,
-                        border: "1.5px solid oklch(0.40 0.04 220)",
-                        boxShadow: "0 1px 3px rgba(0,0,0,0.3)", flexShrink: 0,
-                      }} />
-                      <span style={{ fontSize: 11, color: "oklch(0.80 0.025 75)", fontWeight: 500 }}>
-                        {g.label}
-                      </span>
-                    </div>
-                  ))}
+        {/* Leads */}
+        <div
+          style={{
+            marginTop: 36,
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+            gap: 18,
+          }}
+        >
+          {cast.filter((c) => c.lead).map((c, i) => (
+            <Reveal key={c.character} delay={i * 70} style={{ height: "100%" }}>
+              <div
+                style={{
+                  height: "100%",
+                  background: PARCHMENT_LT,
+                  border: "1px solid oklch(0.85 0.025 75)",
+                  borderRadius: 16,
+                  padding: "24px 22px",
+                }}
+              >
+                <div
+                  style={{
+                    width: 54,
+                    height: 54,
+                    borderRadius: "50%",
+                    background: `linear-gradient(135deg, ${TEAL}, ${NAVY})`,
+                    color: "white",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontFamily: "var(--font-display)",
+                    fontSize: 22,
+                    fontWeight: 700,
+                    marginBottom: 16,
+                  }}
+                >
+                  {c.character.replace(/[“”"]/g, "").split(" ").map((w) => w[0]).slice(0, 2).join("")}
                 </div>
+                <h3 style={{ fontFamily: "var(--font-display)", fontSize: 20, fontWeight: 700, color: NAVY, margin: 0 }}>{c.character}</h3>
+                <div style={{ fontSize: 13.5, color: AMBER, fontWeight: 700, marginTop: 3 }}>{c.actor}</div>
+                <p style={{ marginTop: 12, fontSize: 14.5, lineHeight: 1.6, color: MUTED }}>{c.blurb}</p>
               </div>
-            </div>
-          )}
-
-          {/* Mobile: selected location mini-card above sheet */}
-          {isMobile && selectedLocation && sheetSnap === "peek" && (
-            <div
-              onClick={() => setSheetSnap("half")}
-              style={{
-                position: "absolute",
-                bottom: `calc(${(1 - SHEET_PEEK) * 100}vh + 8px)`,
-                left: 80, right: 12,
-                background: "oklch(0.97 0.015 75)",
-                borderRadius: 12, padding: "10px 14px",
-                boxShadow: "0 4px 20px rgba(26,46,59,0.22)",
-                border: "1px solid oklch(0.82 0.030 75)",
-                zIndex: 20, cursor: "pointer",
-                animation: "slideUp 200ms cubic-bezier(0.23,1,0.32,1)",
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <div style={{
-                  width: 18, height: 18, borderRadius: "50% 50% 50% 0",
-                  transform: "rotate(-45deg)",
-                  background: getMarkerColor(selectedLocation),
-                  border: "2px solid white", boxShadow: "0 1px 4px rgba(0,0,0,0.25)", flexShrink: 0,
-                }} />
-                <div style={{ minWidth: 0 }}>
-                  <div style={{
-                    fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 13,
-                    color: "oklch(0.22 0.06 220)", overflow: "hidden",
-                    textOverflow: "ellipsis", whiteSpace: "nowrap",
-                  }}>
-                    {selectedLocation.name}
-                  </div>
-                  <div style={{
-                    fontSize: 11, color: "oklch(0.52 0.10 185)", fontStyle: "italic",
-                    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                  }}>
-                    {selectedLocation.showName}
-                  </div>
-                </div>
-                <div style={{ marginLeft: "auto", fontSize: 18, color: "oklch(0.52 0.10 185)" }}>›</div>
-              </div>
-            </div>
-          )}
+            </Reveal>
+          ))}
         </div>
 
-        {/* ── Mobile bottom sheet ─────────────────────────────────────────── */}
-        {isMobile && (
-          <div style={{
-            position: "absolute", left: 0, right: 0, bottom: 0,
-            top: `${sheetTop * 100}%`,
-            background: "oklch(0.97 0.015 75)",
-            borderRadius: "18px 18px 0 0",
-            boxShadow: "0 -4px 24px rgba(26,46,59,0.18)",
-            zIndex: 30, display: "flex", flexDirection: "column",
-            transition: "top 300ms cubic-bezier(0.23,1,0.32,1)",
-            overflow: "hidden",
-          }}>
-            {/* Drag handle */}
-            <div
-              style={{
-                flexShrink: 0, padding: "10px 0 6px",
-                display: "flex", flexDirection: "column", alignItems: "center",
-                cursor: "grab", touchAction: "none", userSelect: "none",
-                WebkitUserSelect: "none",
-              } as React.CSSProperties}
-              onMouseDown={(e) => onDragStart(e.clientY)}
-              onMouseUp={(e) => onDragEnd(e.clientY)}
-              onTouchStart={(e) => onDragStart(e.touches[0].clientY)}
-              onTouchEnd={(e) => onDragEnd(e.changedTouches[0].clientY)}
-            >
-              <div style={{
-                width: 36, height: 4, borderRadius: 2,
-                background: "oklch(0.75 0.025 75)", marginBottom: 8,
-              }} />
-              <div style={{
-                width: "100%", padding: "0 14px",
-                display: "flex", alignItems: "center", justifyContent: "space-between",
-              }}>
-                <span style={{
-                  fontFamily: "var(--font-display)", fontWeight: 700,
-                  fontSize: 15, color: "oklch(0.22 0.06 220)",
-                }}>
-                  {filteredLocations.length} Locations
-                </span>
-                <div style={{ display: "flex", gap: 6 }}>
-                  {(["peek", "half", "full"] as const).map((snap) => (
-                    <button key={snap} onClick={() => setSheetSnap(snap)} style={{
-                      width: 28, height: 28, borderRadius: 8,
-                      border: "1px solid oklch(0.82 0.030 75)",
-                      background: sheetSnap === snap ? "oklch(0.52 0.10 185)" : "oklch(0.91 0.020 75)",
-                      color: sheetSnap === snap ? "white" : "oklch(0.45 0.05 220)",
-                      fontSize: 13, cursor: "pointer",
-                      display: "flex", alignItems: "center", justifyContent: "center",
-                      touchAction: "manipulation",
-                    }}>
-                      {snap === "peek" ? "▁" : snap === "half" ? "▄" : "█"}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            {/* Search + Category */}
-            <div
-              style={{ flexShrink: 0, padding: "6px 14px 8px", borderBottom: "1px solid oklch(0.88 0.025 75)" }}
-              onTouchStart={(e) => e.stopPropagation()}
-            >
-              <input
-                type="text"
-                placeholder="Search locations…"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                style={{
-                  width: "100%", padding: "9px 14px", borderRadius: 10,
-                  border: "1px solid oklch(0.82 0.030 75)",
-                  background: "oklch(0.99 0.010 75)",
-                  fontFamily: "var(--font-body)", fontSize: 14,
-                  color: "oklch(0.22 0.06 220)", outline: "none",
-                  marginBottom: 8, boxSizing: "border-box",
-                  WebkitAppearance: "none",
-                }}
-              />
-              <div style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 2 }}>
-                <button onClick={() => setCategoryFilter("all")} style={{
-                  padding: "5px 12px", borderRadius: 20,
-                  fontSize: 12, fontWeight: 600, cursor: "pointer",
-                  whiteSpace: "nowrap", flexShrink: 0, transition: "all 150ms",
-                  background: categoryFilter === "all" ? "oklch(0.22 0.06 220)" : "oklch(0.90 0.020 75)",
-                  color: categoryFilter === "all" ? "oklch(0.94 0.025 75)" : "oklch(0.40 0.05 220)",
-                  border: "1px solid oklch(0.80 0.025 75)", touchAction: "manipulation", minHeight: 32,
-                }}>
-                  All Types
-                </button>
-                {categoryGroups.map((g) => (
-                  <button key={g.label} onClick={() => setCategoryFilter(g.label)} style={{
-                    padding: "5px 12px", borderRadius: 20,
-                    fontSize: 12, fontWeight: 600, cursor: "pointer",
-                    whiteSpace: "nowrap", flexShrink: 0, transition: "all 150ms",
-                    background: categoryFilter === g.label ? g.color : "oklch(0.90 0.020 75)",
-                    color: categoryFilter === g.label ? "white" : "oklch(0.40 0.05 220)",
-                    border: `1px solid ${categoryFilter === g.label ? g.color : "oklch(0.80 0.025 75)"}`,
-                    touchAction: "manipulation", minHeight: 32,
-                  }}>
-                    {g.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Location list */}
-            <div
-              className="custom-scrollbar"
-              style={{ overflowY: "auto", flex: 1, WebkitOverflowScrolling: "touch", overscrollBehavior: "contain" } as React.CSSProperties}
-              onTouchStart={(e) => e.stopPropagation()}
-            >
-              {filteredLocations.length === 0 ? (
-                <div style={{
-                  padding: "32px 16px", textAlign: "center",
-                  color: "oklch(0.55 0.04 220)",
-                  fontFamily: "var(--font-display)", fontStyle: "italic", fontSize: 15,
-                }}>
-                  No locations match your filters.
-                </div>
-              ) : (
-                filteredLocations.map((loc, idx) => (
-                  <div key={loc.id} ref={(el) => { if (el) cardRefs.current.set(loc.id, el); }}>
-                    <LocationCard
-                      loc={loc} idx={idx}
-                      isSelected={selectedId === loc.id}
-                      onSelect={() => selectLocation(loc)}
-                    />
-                  </div>
-                ))
-              )}
-            </div>
-
-            {/* Legend pinned at bottom of mobile sheet */}
-            <MapLegend compact />
+        {/* Ensemble */}
+        <Reveal delay={120}>
+          <div style={{ marginTop: 22, fontSize: 12.5, fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", color: MUTED, marginBottom: 12 }}>
+            And featuring
           </div>
-        )}
-      </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+            {cast.filter((c) => !c.lead).map((c) => (
+              <div
+                key={c.character}
+                style={{
+                  background: PARCHMENT_LT,
+                  border: "1px solid oklch(0.85 0.025 75)",
+                  borderRadius: 12,
+                  padding: "10px 15px",
+                }}
+              >
+                <div style={{ fontFamily: "var(--font-display)", fontSize: 15, fontWeight: 700, color: NAVY }}>{c.character}</div>
+                <div style={{ fontSize: 12.5, color: TEAL, marginTop: 1 }}>{c.actor}</div>
+              </div>
+            ))}
+          </div>
+        </Reveal>
+      </section>
+
+      {/* ── WHERE TO WATCH ────────────────────────────────────────────────── */}
+      <section style={{ background: PARCHMENT_LT, borderTop: "1px solid oklch(0.85 0.025 75)" }}>
+        <div style={{ maxWidth: 1100, margin: "0 auto", padding: "clamp(48px, 8vw, 84px) clamp(18px, 5vw, 28px)" }}>
+          <Reveal>
+            <div style={{ textAlign: "center", marginBottom: 32 }}>
+              <SectionLabel color={AMBER}>Where to Watch</SectionLabel>
+              <h2 style={{ fontFamily: "var(--font-display)", fontSize: "clamp(24px, 4vw, 34px)", fontWeight: 700, color: NAVY, margin: 0 }}>
+                Catch up before you go
+              </h2>
+            </div>
+          </Reveal>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 18, maxWidth: 720, margin: "0 auto" }}>
+            {whereToWatch.map((w, i) => (
+              <Reveal key={w.region} delay={i * 80}>
+                <div style={{ background: PARCHMENT, border: "1px solid oklch(0.85 0.025 75)", borderRadius: 16, padding: "22px 24px" }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: TEAL, marginBottom: 14 }}>
+                    {w.region}
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                    {w.services.map((s) => (
+                      <div key={s.name} style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12 }}>
+                        <span style={{ fontFamily: "var(--font-display)", fontSize: 17, fontWeight: 700, color: NAVY }}>{s.name}</span>
+                        <span style={{ fontSize: 12.5, color: MUTED }}>{s.note}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </Reveal>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── FINAL CTA ─────────────────────────────────────────────────────── */}
+      <section style={{ background: `linear-gradient(155deg, ${NAVY} 0%, ${NAVY_DEEP} 100%)`, position: "relative", overflow: "hidden" }}>
+        <div style={{ position: "absolute", inset: 0, backgroundImage: TOPO, backgroundSize: "260px 260px", opacity: 0.7 }} />
+        <div style={{ position: "relative", maxWidth: 760, margin: "0 auto", padding: "clamp(56px, 9vw, 96px) clamp(18px, 5vw, 28px)", textAlign: "center" }}>
+          <Reveal>
+            <div style={{ fontSize: 40, marginBottom: 10 }}>🧭</div>
+            <h2 style={{ fontFamily: "var(--font-display)", fontSize: "clamp(28px, 5vw, 46px)", fontWeight: 700, color: PARCHMENT_LT, margin: 0, lineHeight: 1.1 }}>
+              Ready to find your way to the Crossing?
+            </h2>
+            <p style={{ marginTop: 16, fontSize: 17, color: "oklch(0.8 0.03 75)", lineHeight: 1.6 }}>
+              {stats.total} pins are waiting. Zoom in, filter by season, and start your own
+              Sullivan's Crossing pilgrimage across Nova Scotia.
+            </p>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 12, justifyContent: "center", marginTop: 30 }}>
+              <Link
+                href="/map"
+                style={{
+                  padding: "14px 28px",
+                  borderRadius: 12,
+                  background: AMBER,
+                  color: NAVY,
+                  fontWeight: 700,
+                  fontSize: 16,
+                  textDecoration: "none",
+                  boxShadow: "0 8px 24px oklch(0.62 0.13 70 / 0.35)",
+                }}
+              >
+                🗺 Open the Map
+              </Link>
+              <Link
+                href="/trip"
+                style={{
+                  padding: "14px 28px",
+                  borderRadius: 12,
+                  background: "oklch(1 0 0 / 0.06)",
+                  color: PARCHMENT_LT,
+                  fontWeight: 600,
+                  fontSize: 16,
+                  textDecoration: "none",
+                  border: "1px solid oklch(1 0 0 / 0.18)",
+                }}
+              >
+                Plan a Trip
+              </Link>
+            </div>
+          </Reveal>
+        </div>
+      </section>
+
+      <SiteFooter />
 
       <style>{`
-        @keyframes fadeIn {
-          from { opacity: 0; transform: translateY(-4px); }
-          to { opacity: 1; transform: translateY(0); }
+        html, body { overflow-x: hidden; }
+        .region-card:hover { transform: translateY(-4px); box-shadow: 0 16px 36px oklch(0.22 0.06 220 / 0.14); }
+        @media (max-width: 760px) {
+          .about-grid { grid-template-columns: 1fr !important; }
         }
-        @keyframes slideUp {
-          from { opacity: 0; transform: translateY(12px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: oklch(0.88 0.030 75); }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: oklch(0.70 0.05 185); border-radius: 3px; }
-        * { -webkit-tap-highlight-color: transparent; }
-        body { overflow: hidden; }
       `}</style>
     </div>
   );
