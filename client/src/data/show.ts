@@ -268,3 +268,151 @@ export const stats = {
   regions: regions.length,
   seasons: show.seasons,
 };
+
+// ─── Route helpers ──────────────────────────────────────────────────────────
+// Google Maps only honours ~10 points in a single /dir/ link, so long routes
+// are split into consecutive legs that share their joining stop.
+export const MAX_POINTS_PER_LEG = 10;
+
+export function splitRouteLegs(locs: Location[]): Location[][] {
+  if (locs.length <= MAX_POINTS_PER_LEG) return [locs];
+  const legs: Location[][] = [];
+  for (let start = 0; start < locs.length - 1; start += MAX_POINTS_PER_LEG - 1) {
+    legs.push(locs.slice(start, start + MAX_POINTS_PER_LEG));
+  }
+  return legs;
+}
+
+// Great-circle distance in km between two locations.
+export function distanceKm(a: Location, b: Location): number {
+  const R = 6371;
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(b.lat - a.lat);
+  const dLon = toRad(b.lon - a.lon);
+  const h =
+    Math.sin(dLat / 2) ** 2 + Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+
+// Rough road estimate: straight-line distance × 1.3 for Nova Scotia's winding roads.
+export function estimateRouteKm(locs: Location[]): number {
+  let total = 0;
+  for (let i = 1; i < locs.length; i++) total += distanceKm(locs[i - 1], locs[i]);
+  return Math.round(total * 1.3);
+}
+
+// ─── Fan Passport badges ────────────────────────────────────────────────────
+export interface Badge {
+  id: string;
+  name: string;
+  emoji: string;
+  description: string;
+  // Location ids that must all be visited, or a minimum count of any visits.
+  requires: { ids: number[] } | { count: number };
+}
+
+export const badges: Badge[] = [
+  { id: "first", name: "First Stop", emoji: "🎟️", description: "Visit or spot your first filming location.", requires: { count: 1 } },
+  { id: "diner", name: "Diner Regular", emoji: "☕", description: "Visit both Shandon's Diners — Hali Deli and the Season 3 building in Hubbards.", requires: { ids: [4, 32] } },
+  { id: "lighthouse", name: "Lighthouse Keeper", emoji: "🏮", description: "See the Peggy's Cove and Terence Bay lighthouses.", requires: { ids: [25, 26] } },
+  { id: "waterfall", name: "Waterfall Chaser", emoji: "💧", description: "Find both waterfalls: Indian Falls and Ettinger Falls.", requires: { ids: [29, 36] } },
+  { id: "season3", name: "Sleep Inside Season 3", emoji: "🛏️", description: "Rob's house, Cal's cabin and the new Shandon's Diner at Hubbards Beach.", requires: { ids: [30, 31, 32] } },
+  { id: "heart", name: "Heart of the Crossing", emoji: "⛺", description: "Spot the campground, the Timberlake town set and Sully's house.", requires: { ids: [1, 2, 3] } },
+  ...regions.map((r) => ({
+    id: `region-${r.id}`,
+    name: `${r.name} Complete`,
+    emoji: r.emoji,
+    description: `Every one of the ${r.locationIds.length} spots in ${r.name}.`,
+    requires: { ids: r.locationIds },
+  })),
+  { id: "half", name: "Halfway to the Crossing", emoji: "🧭", description: `Visit or spot ${Math.ceil(locations.length / 2)} locations.`, requires: { count: Math.ceil(locations.length / 2) } },
+  { id: "all", name: "True Crossing Fan", emoji: "🏆", description: `All ${locations.length} confirmed filming locations.`, requires: { count: locations.length } },
+];
+
+export function badgeProgress(badge: Badge, visited: number[]): { have: number; need: number; earned: boolean } {
+  if ("count" in badge.requires) {
+    const need = badge.requires.count;
+    const have = Math.min(visited.length, need);
+    return { have, need, earned: visited.length >= need };
+  }
+  const need = badge.requires.ids.length;
+  const have = badge.requires.ids.filter((id) => visited.includes(id)).length;
+  return { have, need, earned: have === need };
+}
+
+// ─── Fan trivia ─────────────────────────────────────────────────────────────
+// Questions are generated from the confirmed-location dataset so every answer
+// is backed by the same sources as the map.
+export interface QuizQuestion {
+  prompt: string;
+  options: string[];
+  answer: string;
+  locationId: number;
+}
+
+// "Which real place played …?" clues, keyed by location id.
+const PLAYED_CLUES: Record<number, string> = {
+  1: "Sully's campground — the Sullivan's Crossing campground itself",
+  2: "the exterior streets of Timberlake",
+  3: "Sully's lakefront house",
+  4: "Shandon's Diner in Seasons 1 & 2",
+  6: "the awards ceremony gala in the very first episode",
+  11: "Rafe's house from Season 2 onward",
+  13: "the bridge scene in Season 4's 'Abandoning'",
+  14: "the Nova Scotia Board of Physicians headquarters in Season 4",
+  18: "the axe-throwing scene in Season 2's 'Revelations'",
+  19: "the hospital where Maggie's surgery scenes were shot",
+  25: "the coastline in the opening credits",
+  27: "Timberlake's establishing shots",
+  30: "Rob's house in Season 3",
+  31: "Cal's cabin in Season 3",
+  32: "the new Shandon's Diner in Season 3",
+  34: "the campsite party and rodeo in Season 1's 'Detours'",
+  36: "the cliff-side rescue in Season 3's 'Out of the Blue'",
+};
+
+// Locations that could also fairly answer a clue, so they're never distractors.
+const CLUE_CONFLICTS: Record<number, number[]> = {
+  1: [22, 23],
+  2: [27],
+  27: [2],
+};
+
+function shuffle<T>(arr: T[]): T[] {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+export function buildQuiz(length = 10): QuizQuestion[] {
+  const played: QuizQuestion[] = Object.entries(PLAYED_CLUES).map(([idStr, clue]) => {
+    const loc = byId.get(Number(idStr))!;
+    const excluded = new Set([loc.id, ...(CLUE_CONFLICTS[loc.id] ?? [])]);
+    const distractors = shuffle(locations.filter((l) => !excluded.has(l.id))).slice(0, 3).map((l) => l.name);
+    return {
+      prompt: `Which real Nova Scotia location played ${clue}?`,
+      options: shuffle([loc.name, ...distractors]),
+      answer: loc.name,
+      locationId: loc.id,
+    };
+  });
+
+  const where: QuizQuestion[] = shuffle(locations.filter((l) => l.publicAccess))
+    .slice(0, 6)
+    .map((loc) => {
+      const region = getRegionForLocation(loc.id)!;
+      const distractors = shuffle(regions.filter((r) => r.id !== region.id)).slice(0, 3).map((r) => r.name);
+      return {
+        prompt: `Road-trip time: which part of the province will you drive to for ${loc.name} (${loc.showName})?`,
+        options: shuffle([region.name, ...distractors]),
+        answer: region.name,
+        locationId: loc.id,
+      };
+    });
+
+  const played6 = shuffle(played).slice(0, Math.min(length - 3, played.length));
+  return shuffle([...played6, ...where.slice(0, length - played6.length)]);
+}

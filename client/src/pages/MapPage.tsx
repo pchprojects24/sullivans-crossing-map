@@ -6,8 +6,10 @@
  */
 
 import { MapView } from "@/components/Map";
-import { useRef, useState, useCallback, useEffect } from "react";
-import { Link } from "wouter";
+import { useRef, useState, useCallback, useEffect, useMemo } from "react";
+import { Link, useSearch } from "wouter";
+import L from "leaflet";
+import { toast } from "sonner";
 import { useIsMobile } from "@/hooks/useMobile";
 import {
   locations,
@@ -17,6 +19,24 @@ import {
   getMapsUrl,
   type Location,
 } from "@/data/locations";
+import { regions, getRegionForLocation } from "@/data/show";
+import { useVisited, useTrip, appUrl, shareLink } from "@/lib/fanStore";
+
+// Escape dataset strings before they go into Leaflet popup HTML.
+function esc(s: string): string {
+  return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
+}
+
+function pinIcon(color: string, selected: boolean, visited: boolean): L.DivIcon {
+  const size = selected ? 32 : 24;
+  return L.divIcon({
+    className: "sc-pin",
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size],
+    popupAnchor: [0, -size],
+    html: `<div style="width:${size}px;height:${size}px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);background:${color};border:${visited ? "3px solid #e0a526" : "2.5px solid white"};box-shadow:${selected ? "0 6px 18px rgba(0,0,0,0.5)" : "0 2px 6px rgba(0,0,0,0.35)"};display:flex;align-items:center;justify-content:center;transition:all 120ms;">${visited ? '<span style="transform:rotate(45deg);color:white;font-size:' + (selected ? 14 : 11) + 'px;font-weight:700;">✓</span>' : ""}</div>`,
+  });
+}
 
 // ── Season filter config ────────────────────────────────────────────────────
 const SEASON_FILTERS = [
@@ -136,9 +156,28 @@ function LocationCard({
   loc: Location; idx: number; isSelected: boolean; onSelect: () => void; compact?: boolean;
 }) {
   const color = getMarkerColor(loc);
+  const { isVisited, toggleVisited } = useVisited();
+  const { inTrip, toggleTrip } = useTrip();
+  const visited = isVisited(loc.id);
+  const queued = inTrip(loc.id);
+  const region = getRegionForLocation(loc.id);
+
+  const share = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const result = await shareLink(
+      `${loc.showName} – Sullivan's Crossing filming location`,
+      appUrl(`/map?loc=${loc.id}`),
+      `${loc.name} played ${loc.showName} in Sullivan's Crossing.`,
+    );
+    if (result === "copied") toast.success("Link copied to clipboard");
+    else if (result === "failed") toast.error("Couldn't share this link");
+  };
+
   return (
     <div
       onClick={onSelect}
+      className="loc-card"
+      aria-current={isSelected ? "true" : undefined}
       style={{
         padding: compact ? "11px 14px" : "13px 16px",
         borderBottom: "1px solid oklch(0.88 0.025 75)",
@@ -164,7 +203,13 @@ function LocationCard({
             fontSize: compact ? 13 : 14,
             color: "oklch(0.22 0.06 220)", lineHeight: 1.3, marginBottom: 2,
           }}>
-            {idx + 1}. {loc.name}
+            {/* Real button for keyboard/screen-reader users; the click bubbles to the card. */}
+            <button className="loc-title" aria-expanded={isSelected} style={{ all: "unset", cursor: "pointer" }}>
+              {idx + 1}. {loc.name}
+            </button>
+            {visited && (
+              <span title="Visited" style={{ marginLeft: 6, fontSize: 11, color: "#b07d10", fontFamily: "var(--font-body)" }}>✓ visited</span>
+            )}
           </h3>
           <p style={{
             fontSize: compact ? 11 : 12,
@@ -202,8 +247,9 @@ function LocationCard({
                 </p>
               </div>
               <div style={{ fontSize: 12, color: "oklch(0.50 0.04 220)", marginBottom: 8 }}>
-                📍 {loc.address}
+                📍 {loc.address}{region ? ` · ${region.emoji} ${region.name}` : ""}
               </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
               <a
                 href={getMapsUrl(loc)}
                 target="_blank"
@@ -216,8 +262,26 @@ function LocationCard({
                   touchAction: "manipulation",
                 }}
               >
-                Open in Google Maps →
+                Directions →
               </a>
+              <button
+                onClick={(e) => { e.stopPropagation(); toggleVisited(loc.id); }}
+                aria-pressed={visited}
+                style={cardActionBtn(visited ? "#b07d10" : undefined)}
+              >
+                {visited ? "✓ Visited" : loc.publicAccess ? "Mark visited" : "Mark spotted"}
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); toggleTrip(loc.id); toast.success(queued ? "Removed from your trip" : "Added to your trip"); }}
+                aria-pressed={queued}
+                style={cardActionBtn(queued ? "oklch(0.52 0.10 185)" : undefined)}
+              >
+                {queued ? "✓ In trip" : "+ Add to trip"}
+              </button>
+              <button onClick={share} style={cardActionBtn()} aria-label={`Share ${loc.name}`}>
+                ↗ Share
+              </button>
+              </div>
             </div>
           )}
         </div>
@@ -234,39 +298,71 @@ const SHEET_FULL = 0.06;
 // ── Main page component ─────────────────────────────────────────────────────
 export default function MapPage() {
   const isMobile = useIsMobile();
-  const mapRef = useRef<google.maps.Map | null>(null);
-  const markersRef = useRef<Map<number, google.maps.marker.AdvancedMarkerElement>>(new Map());
-  const infoWindowRef = useRef<google.maps.InfoWindow | null>(null);
+  const search = useSearch();
+  const mapRef = useRef<L.Map | null>(null);
+  const markersRef = useRef<Map<number, L.Marker>>(new Map());
   const cardRefs = useRef<Map<number, HTMLDivElement>>(new Map());
+  const { visited } = useVisited();
 
-  const [selectedId, setSelectedId] = useState<number | null>(null);
+  // Deep links: /map?loc=<id> opens a location, /map?region=<id> filters to a region.
+  const initialParams = useMemo(() => new URLSearchParams(search), []); // eslint-disable-line react-hooks/exhaustive-deps
+  const [selectedId, setSelectedId] = useState<number | null>(() => {
+    const id = Number(initialParams.get("loc"));
+    return locations.some((l) => l.id === id) ? id : null;
+  });
+  const [regionFilter, setRegionFilter] = useState<string>(() => {
+    const r = initialParams.get("region");
+    return regions.some((x) => x.id === r) ? r! : "all";
+  });
   const [seasonFilter, setSeasonFilter] = useState("all");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
-  const [sheetSnap, setSheetSnap] = useState<"peek" | "half" | "full">("peek");
+  const [sheetSnap, setSheetSnap] = useState<"peek" | "half" | "full">(() => (initialParams.get("loc") ? "half" : "peek"));
   const [mobileLegendOpen, setMobileLegendOpen] = useState(false);
+  const [mapReady, setMapReady] = useState(false);
 
   const dragStartY = useRef<number | null>(null);
   const dragStartSnap = useRef<"peek" | "half" | "full">("peek");
 
-  const filteredLocations = locations.filter((loc) => {
+  const activeRegion = regions.find((r) => r.id === regionFilter);
+  const q = searchQuery.trim().toLowerCase();
+  const filteredLocations = useMemo(() => locations.filter((loc) => {
+    const matchRegion = !activeRegion || activeRegion.locationIds.includes(loc.id);
     const matchSeason = matchesSeason(loc, seasonFilter);
     const matchCat =
       categoryFilter === "all" ||
       categoryGroups.find((g) => g.label === categoryFilter)?.categories.includes(loc.category);
     const matchSearch =
-      searchQuery === "" ||
-      loc.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      loc.showName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      loc.description.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchSeason && matchCat && matchSearch;
-  });
+      q === "" ||
+      loc.name.toLowerCase().includes(q) ||
+      loc.showName.toLowerCase().includes(q) ||
+      loc.address.toLowerCase().includes(q) ||
+      loc.description.toLowerCase().includes(q);
+    return matchRegion && matchSeason && matchCat && matchSearch;
+  }), [activeRegion, seasonFilter, categoryFilter, q]);
+
+  const syncUrl = (params: Record<string, string | null>) => {
+    const next = new URLSearchParams(window.location.search);
+    Object.entries(params).forEach(([k, v]) => (v === null ? next.delete(k) : next.set(k, v)));
+    const qs = next.toString();
+    window.history.replaceState(null, "", `${window.location.pathname}${qs ? `?${qs}` : ""}`);
+  };
 
   const selectLocation = useCallback((loc: Location) => {
     setSelectedId(loc.id);
-    if (mapRef.current) {
-      mapRef.current.panTo({ lat: loc.lat, lng: loc.lon });
-      mapRef.current.setZoom(14);
+    syncUrl({ loc: String(loc.id) });
+    const map = mapRef.current;
+    if (map) {
+      const zoom = Math.max(map.getZoom(), 14);
+      let target = L.latLng(loc.lat, loc.lon);
+      if (isMobile) {
+        // Centre the pin in the strip of map left visible above the half-open sheet.
+        const h = map.getSize().y;
+        const shift = h * (0.5 - SHEET_HALF / 2);
+        target = map.unproject(map.project(target, zoom).add([0, shift]), zoom);
+      }
+      map.flyTo(target, zoom, { duration: 0.6 });
+      markersRef.current.get(loc.id)?.openPopup();
     }
     if (isMobile) setSheetSnap("half");
     setTimeout(() => {
@@ -274,81 +370,80 @@ export default function MapPage() {
     }, 200);
   }, [isMobile]);
 
-  const handleMapReady = useCallback((map: google.maps.Map) => {
-    mapRef.current = map;
-    infoWindowRef.current = new google.maps.InfoWindow();
+  const changeRegion = (id: string) => {
+    setRegionFilter(id);
+    syncUrl({ region: id === "all" ? null : id });
+  };
 
-    map.setOptions({
-      styles: [
-        { elementType: "geometry", stylers: [{ color: "#e8dfd0" }] },
-        { elementType: "labels.text.fill", stylers: [{ color: "#1a2e3b" }] },
-        { elementType: "labels.text.stroke", stylers: [{ color: "#f5ede0" }] },
-        { featureType: "water", elementType: "geometry", stylers: [{ color: "#a8c8d8" }] },
-        { featureType: "water", elementType: "labels.text.fill", stylers: [{ color: "#1a2e3b" }] },
-        { featureType: "road", elementType: "geometry", stylers: [{ color: "#d4c5b0" }] },
-        { featureType: "road", elementType: "geometry.stroke", stylers: [{ color: "#c4b5a0" }] },
-        { featureType: "road.highway", elementType: "geometry", stylers: [{ color: "#c8a87a" }] },
-        { featureType: "poi.park", elementType: "geometry", stylers: [{ color: "#c8d8b8" }] },
-        { featureType: "poi.park", elementType: "labels.text.fill", stylers: [{ color: "#4a7c59" }] },
-        { featureType: "administrative", elementType: "geometry.stroke", stylers: [{ color: "#b0a090" }] },
-        { featureType: "poi", elementType: "geometry", stylers: [{ color: "#ddd5c8" }] },
-        { featureType: "poi", elementType: "labels.text.fill", stylers: [{ color: "#6b5b45" }] },
-        { featureType: "transit", elementType: "geometry", stylers: [{ color: "#c8b898" }] },
-      ],
-      gestureHandling: "greedy",
-      zoomControlOptions: { position: google.maps.ControlPosition.RIGHT_CENTER },
-    });
+  const handleMapReady = useCallback((map: L.Map) => {
+    mapRef.current = map;
 
     locations.forEach((loc) => {
-      const color = getMarkerColor(loc);
-      const pinEl = document.createElement("div");
-      pinEl.style.cssText = `
-        width:24px;height:24px;border-radius:50% 50% 50% 0;
-        transform:rotate(-45deg);background:${color};
-        border:2.5px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.35);
-        cursor:pointer;transition:transform 120ms cubic-bezier(0.23,1,0.32,1),box-shadow 120ms;
-      `;
-      const marker = new google.maps.marker.AdvancedMarkerElement({
-        map, position: { lat: loc.lat, lng: loc.lon }, title: loc.name, content: pinEl,
+      const marker = L.marker([loc.lat, loc.lon], {
+        icon: pinIcon(getMarkerColor(loc), false, false),
+        title: loc.name,
+        alt: loc.name,
+        keyboard: true,
+        riseOnHover: true,
       });
-      marker.addListener("click", () => {
-        selectLocation(loc);
-        if (infoWindowRef.current) {
-          infoWindowRef.current.setContent(`
-            <div style="font-family:'Source Sans 3',sans-serif;max-width:200px;padding:4px 2px;">
-              <div style="font-family:'Playfair Display',serif;font-weight:700;font-size:13px;color:#1a2e3b;margin-bottom:3px;line-height:1.3;">${loc.name}</div>
-              <div style="font-size:11px;color:#2d7d7d;font-style:italic;margin-bottom:4px;">${loc.showName}</div>
-              <div style="font-size:10px;color:#6b5b45;background:#f5ede0;padding:2px 6px;border-radius:4px;display:inline-block;">${loc.season}</div>
-            </div>
-          `);
-          infoWindowRef.current.open(map, marker);
-        }
-      });
+      marker.bindPopup(
+        `<div style="font-family:'Source Sans 3',sans-serif;max-width:210px;">
+          <div style="font-family:'Playfair Display',serif;font-weight:700;font-size:13.5px;color:#1a2e3b;margin-bottom:3px;line-height:1.3;">${esc(loc.name)}</div>
+          <div style="font-size:11.5px;color:#2d7d7d;font-style:italic;margin-bottom:5px;">${esc(loc.showName)}</div>
+          <div style="font-size:10.5px;color:#6b5b45;background:#f5ede0;padding:2px 6px;border-radius:4px;display:inline-block;">${esc(loc.season)}</div>
+        </div>`,
+        { closeButton: false, autoPanPadding: [40, 80] },
+      );
+      marker.on("click", () => selectLocation(loc));
       markersRef.current.set(loc.id, marker);
     });
+    setMapReady(true);
   }, [selectLocation]);
 
-  // Update marker visibility when filters change
+  // Open a deep-linked location once the map exists.
   useEffect(() => {
+    if (!mapReady || selectedId === null) return;
+    const loc = locations.find((l) => l.id === selectedId);
+    if (loc) selectLocation(loc);
+    // Only on first map load.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mapReady]);
+
+  // Show only markers that match the filters; frame them when a region is chosen.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
     const ids = new Set(filteredLocations.map((l) => l.id));
     markersRef.current.forEach((marker, id) => {
-      marker.map = ids.has(id) ? mapRef.current : null;
+      if (ids.has(id)) marker.addTo(map);
+      else marker.remove();
     });
-  }, [filteredLocations]);
+  }, [filteredLocations, mapReady]);
 
-  // Highlight selected marker
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    if (activeRegion) {
+      const pts = locations.filter((l) => activeRegion.locationIds.includes(l.id)).map((l) => [l.lat, l.lon] as [number, number]);
+      map.flyToBounds(L.latLngBounds(pts), { padding: [50, 50], maxZoom: 14, duration: 0.6 });
+    }
+  }, [activeRegion, mapReady]);
+
+  // Restyle markers for the selected + visited state.
   useEffect(() => {
     markersRef.current.forEach((marker, id) => {
-      const el = marker.content as HTMLElement;
-      if (!el) return;
-      el.style.transform = id === selectedId
-        ? "rotate(-45deg) scale(1.35)"
-        : "rotate(-45deg) scale(1)";
-      el.style.boxShadow = id === selectedId
-        ? "0 6px 18px rgba(0,0,0,0.5)"
-        : "0 2px 6px rgba(0,0,0,0.35)";
+      const loc = locations.find((l) => l.id === id)!;
+      marker.setIcon(pinIcon(getMarkerColor(loc), id === selectedId, visited.includes(id)));
+      marker.setZIndexOffset(id === selectedId ? 1000 : 0);
     });
-  }, [selectedId]);
+  }, [selectedId, visited, mapReady]);
+
+  const resetFilters = () => {
+    setSeasonFilter("all");
+    setCategoryFilter("all");
+    setSearchQuery("");
+    changeRegion("all");
+  };
 
   // Bottom sheet drag
   const onDragStart = (y: number) => { dragStartY.current = y; dragStartSnap.current = sheetSnap; };
@@ -406,22 +501,23 @@ export default function MapPage() {
                 fontSize: "clamp(9px, 2vw, 10px)",
                 letterSpacing: "0.10em", textTransform: "uppercase",
               }}>
-                Nova Scotia Filming Locations · {locations.length} confirmed spots
+                {locations.length} filming locations · ✓ {visited.length} visited
               </p>
             </div>
           </Link>
 
           {/* Right cluster: nav + season filter pills */}
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" }}>
-            {!isMobile && (
-              <div style={{ display: "flex", gap: 4 }}>
-                <Link href="/" style={mapNavChip}>Home</Link>
-                <Link href="/trip" style={mapNavChip}>Plan a Trip</Link>
-              </div>
-            )}
+            <nav aria-label="Site" style={{ display: "flex", gap: 4 }}>
+              {MAP_NAV.map((n) => (
+                <Link key={n.href} href={n.href} style={mapNavChip} aria-label={n.label} title={n.label}>
+                  {isMobile ? n.icon : n.label}
+                </Link>
+              ))}
+            </nav>
             <div style={{ display: "flex", gap: 4, flexWrap: "wrap", justifyContent: "flex-end" }}>
               {SEASON_FILTERS.map((s) => (
-                <button key={s.value} onClick={() => setSeasonFilter(s.value)} style={{
+                <button key={s.value} onClick={() => setSeasonFilter(s.value)} aria-pressed={seasonFilter === s.value} style={{
                   padding: "3px 9px", borderRadius: 20,
                   fontSize: "clamp(10px, 2.2vw, 11px)", fontWeight: 600,
                   letterSpacing: "0.03em", cursor: "pointer",
@@ -470,7 +566,9 @@ export default function MapPage() {
                   color: "oklch(0.22 0.06 220)", outline: "none",
                   marginBottom: 8, boxSizing: "border-box",
                 }}
+                aria-label="Search locations"
               />
+              <RegionSelect value={regionFilter} onChange={changeRegion} />
               <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
                 <button
                   onClick={() => setCategoryFilter("all")}
@@ -511,6 +609,7 @@ export default function MapPage() {
                 {filteredLocations.length}
               </span>{" "}
               of {locations.length} confirmed filming locations
+              {activeRegion && <> in <b>{activeRegion.name}</b></>}
             </div>
 
             {/* Scrollable location list */}
@@ -522,6 +621,9 @@ export default function MapPage() {
                   fontFamily: "var(--font-display)", fontStyle: "italic", fontSize: 15,
                 }}>
                   No locations match your filters.
+                  <div>
+                    <button onClick={resetFilters} style={{ ...cardActionBtn(), marginTop: 12, fontStyle: "normal" }}>Reset filters</button>
+                  </div>
                 </div>
               ) : (
                 filteredLocations.map((loc, idx) => (
@@ -547,7 +649,7 @@ export default function MapPage() {
           <MapView
             className="w-full h-full"
             initialCenter={{ lat: 44.7, lng: -63.8 }}
-            initialZoom={9}
+            initialZoom={isMobile ? 8 : 9}
             onMapReady={handleMapReady}
           />
 
@@ -739,7 +841,9 @@ export default function MapPage() {
                   marginBottom: 8, boxSizing: "border-box",
                   WebkitAppearance: "none",
                 }}
+                aria-label="Search locations"
               />
+              <RegionSelect value={regionFilter} onChange={changeRegion} />
               <div style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 2 }}>
                 <button onClick={() => setCategoryFilter("all")} style={{
                   padding: "5px 12px", borderRadius: 20,
@@ -780,6 +884,9 @@ export default function MapPage() {
                   fontFamily: "var(--font-display)", fontStyle: "italic", fontSize: 15,
                 }}>
                   No locations match your filters.
+                  <div>
+                    <button onClick={resetFilters} style={{ ...cardActionBtn(), marginTop: 12, fontStyle: "normal" }}>Reset filters</button>
+                  </div>
                 </div>
               ) : (
                 filteredLocations.map((loc, idx) => (
@@ -813,10 +920,55 @@ export default function MapPage() {
         .custom-scrollbar::-webkit-scrollbar-track { background: oklch(0.88 0.030 75); }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: oklch(0.70 0.05 185); border-radius: 3px; }
         * { -webkit-tap-highlight-color: transparent; }
+        .loc-title:focus-visible { outline: 2px solid oklch(0.52 0.10 185); outline-offset: 2px; border-radius: 3px; }
+        .sc-pin { background: none; border: none; }
+        .leaflet-popup-content-wrapper { border-radius: 10px; background: #fbf7f0; }
+        .leaflet-popup-tip { background: #fbf7f0; }
+        .leaflet-container { font-family: var(--font-body); background: #e8dfd0; }
+        .leaflet-tile-pane { filter: sepia(0.18) saturate(0.95); }
+        ${isMobile ? `.leaflet-bottom { bottom: calc(${(1 - SHEET_PEEK) * 100}vh + 4px); }` : ""}
         body { overflow: hidden; }
       `}</style>
     </div>
   );
+}
+
+const MAP_NAV = [
+  { label: "Home", href: "/", icon: "🏠" },
+  { label: "Plan a Trip", href: "/trip", icon: "🧭" },
+  { label: "Fan Passport", href: "/passport", icon: "🎟️" },
+  { label: "Trivia", href: "/quiz", icon: "❓" },
+];
+
+function RegionSelect({ value, onChange }: { value: string; onChange: (id: string) => void }) {
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      aria-label="Filter by region"
+      style={{
+        width: "100%", padding: "6px 10px", borderRadius: 8, marginBottom: 8,
+        border: "1px solid oklch(0.82 0.030 75)", background: "oklch(0.99 0.010 75)",
+        fontFamily: "var(--font-body)", fontSize: 13, color: "oklch(0.22 0.06 220)",
+      }}
+    >
+      <option value="all">All regions</option>
+      {regions.map((r) => (
+        <option key={r.id} value={r.id}>{r.emoji} {r.name} ({r.locationIds.length})</option>
+      ))}
+    </select>
+  );
+}
+
+function cardActionBtn(activeColor?: string): React.CSSProperties {
+  return {
+    display: "inline-block", padding: "6px 12px", borderRadius: 7,
+    fontSize: 12, fontWeight: 600, cursor: "pointer", touchAction: "manipulation",
+    fontFamily: "var(--font-body)",
+    background: activeColor ? activeColor : "oklch(0.97 0.015 75)",
+    color: activeColor ? "white" : "oklch(0.30 0.06 220)",
+    border: `1px solid ${activeColor ?? "oklch(0.80 0.025 75)"}`,
+  };
 }
 
 const mapNavChip: React.CSSProperties = {

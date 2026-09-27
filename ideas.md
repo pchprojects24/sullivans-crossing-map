@@ -15,7 +15,15 @@ keeping the "Maritime Cartographic Romance" look. Three routes share a common
   rest of the site.
 - **`/trip` — Plan Your Trip.** Five curated fan itineraries plus a build-your-own
   route tool that chains any set of locations into one multi-stop Google Maps
-  route.
+  route (split into ≤10-point legs), saved on-device and shareable via `?stops=`.
+- **`/passport` — Fan Passport.** A per-region checklist of every location with
+  badges; progress is stored in localStorage (`client/src/lib/fanStore.ts`) and
+  shared with the map's "Mark visited" button.
+- **`/quiz` — Location Trivia.** Ten questions generated from the location
+  dataset (scene → real place, place → region).
+
+Deep links: `/map?loc=<id>` opens a location, `/map?region=<id>` filters to a region.
+The map is Leaflet + OpenStreetMap/CARTO tiles, so it needs no API key.
 
 Data layers:
 - `client/src/data/locations.ts` — the 37 confirmed filming locations (source of truth).

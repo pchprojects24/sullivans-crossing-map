@@ -315,7 +315,7 @@ export default function Home() {
             {regions.map((r, i) => (
               <Reveal key={r.id} delay={i * 60}>
                 <Link
-                  href="/map"
+                  href={`/map?region=${r.id}`}
                   style={{
                     display: "block",
                     height: "100%",
@@ -417,27 +417,43 @@ export default function Home() {
                       </div>
                       <p style={{ fontSize: 13.5, color: "oklch(0.32 0.05 220)", marginTop: 4, lineHeight: 1.55 }}>{loc.visitorTip}</p>
                     </div>
-                    <a
-                      href={getMapsUrl(loc)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      style={{
-                        marginTop: 16,
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: 6,
-                        padding: "9px 16px",
-                        alignSelf: "flex-start",
-                        background: color,
-                        color: "white",
-                        borderRadius: 9,
-                        fontSize: 13,
-                        fontWeight: 700,
-                        textDecoration: "none",
-                      }}
-                    >
-                      Open in Google Maps →
-                    </a>
+                    <div style={{ marginTop: 16, display: "flex", flexWrap: "wrap", gap: 8 }}>
+                      <a
+                        href={getMapsUrl(loc)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 6,
+                          padding: "9px 16px",
+                          background: color,
+                          color: "white",
+                          borderRadius: 9,
+                          fontSize: 13,
+                          fontWeight: 700,
+                          textDecoration: "none",
+                        }}
+                      >
+                        Directions →
+                      </a>
+                      <Link
+                        href={`/map?loc=${loc.id}`}
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          padding: "9px 16px",
+                          border: `1px solid ${color}`,
+                          color,
+                          borderRadius: 9,
+                          fontSize: 13,
+                          fontWeight: 700,
+                          textDecoration: "none",
+                        }}
+                      >
+                        View on map
+                      </Link>
+                    </div>
                   </div>
                 </div>
               </Reveal>
@@ -524,6 +540,59 @@ export default function Home() {
               </div>
             </Reveal>
           </div>
+        </div>
+      </section>
+
+      {/* ── FAN ZONE ──────────────────────────────────────────────────────── */}
+      <section style={{ maxWidth: 1100, margin: "0 auto", padding: "clamp(56px, 9vw, 96px) clamp(18px, 5vw, 28px) 0" }}>
+        <Reveal>
+          <SectionLabel color={AMBER}>Fan Zone</SectionLabel>
+          <h2 style={{ fontFamily: "var(--font-display)", fontSize: "clamp(26px, 4.5vw, 40px)", fontWeight: 700, color: NAVY, margin: 0, lineHeight: 1.12 }}>
+            Collect the locations, test your knowledge
+          </h2>
+        </Reveal>
+        <div style={{ marginTop: 32, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 18 }}>
+          {[
+            {
+              href: "/passport",
+              emoji: "🎟️",
+              title: "Fan Passport",
+              body: `Tick off all ${stats.total} filming locations as you visit, earn badges like “Diner Regular” and “Lighthouse Keeper”, and share your progress.`,
+              cta: "Open my passport →",
+              color: AMBER,
+            },
+            {
+              href: "/quiz",
+              emoji: "❓",
+              title: "Location Trivia",
+              body: "Which real place played Cal's cabin? Where was the opening-credits coastline? Ten questions, a new mix every time.",
+              cta: "Play the trivia →",
+              color: TEAL,
+            },
+          ].map((c, i) => (
+            <Reveal key={c.href} delay={i * 80} style={{ height: "100%" }}>
+              <Link
+                href={c.href}
+                className="region-card"
+                style={{
+                  display: "block",
+                  height: "100%",
+                  background: PARCHMENT_LT,
+                  border: "1px solid oklch(0.85 0.025 75)",
+                  borderLeft: `5px solid ${c.color}`,
+                  borderRadius: 16,
+                  padding: "24px 22px",
+                  textDecoration: "none",
+                  transition: "transform 200ms cubic-bezier(0.23,1,0.32,1), box-shadow 200ms",
+                }}
+              >
+                <div style={{ fontSize: 34 }} aria-hidden>{c.emoji}</div>
+                <h3 style={{ fontFamily: "var(--font-display)", fontSize: 22, fontWeight: 700, color: NAVY, margin: "10px 0 0" }}>{c.title}</h3>
+                <p style={{ marginTop: 10, fontSize: 14.5, lineHeight: 1.6, color: MUTED }}>{c.body}</p>
+                <div style={{ marginTop: 14, fontSize: 14, fontWeight: 700, color: c.color }}>{c.cta}</div>
+              </Link>
+            </Reveal>
+          ))}
         </div>
       </section>
 

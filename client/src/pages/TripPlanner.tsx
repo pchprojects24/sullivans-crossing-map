@@ -4,7 +4,9 @@
  * filming locations into a single multi-stop Google Maps route.
  */
 
-import { useState, useRef, useCallback } from "react";
+import { useRef, useCallback, useEffect } from "react";
+import { Link, useSearch } from "wouter";
+import { toast } from "sonner";
 import SiteNav from "@/components/SiteNav";
 import SiteFooter from "@/components/SiteFooter";
 import Reveal from "@/components/Reveal";
@@ -13,9 +15,12 @@ import {
   regions,
   buildRouteUrl,
   getLocationsByIds,
+  splitRouteLegs,
+  estimateRouteKm,
   type Itinerary,
 } from "@/data/show";
 import { getMarkerColor, type Location } from "@/data/locations";
+import { useTrip, appUrl, shareLink } from "@/lib/fanStore";
 
 const NAVY = "oklch(0.22 0.06 220)";
 const NAVY_DEEP = "oklch(0.17 0.05 220)";
@@ -48,36 +53,47 @@ function DifficultyPill({ children, color }: { children: React.ReactNode; color:
 }
 
 export default function TripPlanner() {
-  const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  // The route is saved on this device and shared with the map's "Add to trip".
+  const { trip: selectedIds, toggleTrip: toggle, setTrip: setSelectedIds, moveStop: move } = useTrip();
   const builderRef = useRef<HTMLDivElement | null>(null);
+  const search = useSearch();
 
   const selectedLocations = getLocationsByIds(selectedIds);
 
-  const toggle = useCallback((id: number) => {
-    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  const scrollToBuilder = () =>
+    setTimeout(() => builderRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 60);
+
+  // A shared link (/trip?stops=4,5,12) loads that route into the builder.
+  useEffect(() => {
+    const raw = new URLSearchParams(search).get("stops");
+    if (!raw) return;
+    const ids = getLocationsByIds(raw.split(",").map(Number)).map((l) => l.id);
+    if (ids.length) {
+      setSelectedIds(ids);
+      toast.success(`Loaded a shared route with ${ids.length} stop${ids.length > 1 ? "s" : ""}`);
+      scrollToBuilder();
+    }
+    window.history.replaceState(null, "", window.location.pathname);
+    // Only on first load.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const remove = useCallback((id: number) => {
-    setSelectedIds((prev) => prev.filter((x) => x !== id));
-  }, []);
-
-  const move = useCallback((id: number, dir: -1 | 1) => {
-    setSelectedIds((prev) => {
-      const idx = prev.indexOf(id);
-      const next = idx + dir;
-      if (idx < 0 || next < 0 || next >= prev.length) return prev;
-      const copy = [...prev];
-      [copy[idx], copy[next]] = [copy[next], copy[idx]];
-      return copy;
-    });
-  }, []);
+  const remove = toggle;
 
   const loadItinerary = useCallback((it: Itinerary) => {
     setSelectedIds(it.stopIds);
-    setTimeout(() => builderRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 60);
-  }, []);
+    scrollToBuilder();
+  }, [setSelectedIds]);
 
-  const routeUrl = buildRouteUrl(selectedLocations);
+  const shareRoute = async () => {
+    const result = await shareLink(
+      "My Sullivan's Crossing road trip",
+      appUrl(`/trip?stops=${selectedIds.join(",")}`),
+      `My ${selectedIds.length}-stop Sullivan's Crossing filming-location road trip in Nova Scotia 🧭`,
+    );
+    if (result === "copied") toast.success("Route link copied to clipboard");
+    else if (result === "failed") toast.error("Couldn't share right now");
+  };
 
   return (
     <div style={{ background: PARCHMENT, minHeight: "100vh" }}>
@@ -242,8 +258,9 @@ export default function TripPlanner() {
               Pick your stops, get one route
             </h2>
             <p style={{ marginTop: 14, fontSize: 15.5, color: MUTED, maxWidth: 620, lineHeight: 1.6 }}>
-              Tap any location to add it to your route. Reorder your stops, then open them all
-              in Google Maps as a single turn-by-turn trip.
+              Tap any location to add it to your route (or use “Add to trip” on the{" "}
+              <Link href="/map" style={{ color: TEAL, fontWeight: 600 }}>map</Link>). Reorder your stops, then
+              open them in Google Maps as turn-by-turn directions. Your route is saved on this device.
             </p>
           </Reveal>
 
@@ -270,6 +287,7 @@ export default function TripPlanner() {
                           <button
                             key={loc.id}
                             onClick={() => toggle(loc.id)}
+                            aria-pressed={active}
                             style={{
                               width: "100%",
                               display: "flex",
@@ -331,10 +349,10 @@ export default function TripPlanner() {
             {/* Route summary */}
             <RouteSummary
               selectedLocations={selectedLocations}
-              routeUrl={routeUrl}
               onRemove={remove}
               onMove={move}
               onClear={() => setSelectedIds([])}
+              onShare={shareRoute}
             />
           </div>
         </div>
@@ -356,18 +374,20 @@ export default function TripPlanner() {
 // ── Sticky route summary panel ────────────────────────────────────────────
 function RouteSummary({
   selectedLocations,
-  routeUrl,
   onRemove,
   onMove,
   onClear,
+  onShare,
 }: {
   selectedLocations: Location[];
-  routeUrl: string;
   onRemove: (id: number) => void;
   onMove: (id: number, dir: -1 | 1) => void;
   onClear: () => void;
+  onShare: () => void;
 }) {
   const count = selectedLocations.length;
+  const legs = splitRouteLegs(selectedLocations);
+  const km = estimateRouteKm(selectedLocations);
   return (
     <div
       className="route-summary"
@@ -384,7 +404,9 @@ function RouteSummary({
         <div>
           <div style={{ fontFamily: "var(--font-display)", fontSize: 18, fontWeight: 700, color: PARCHMENT_LT }}>My Route</div>
           <div style={{ fontSize: 12.5, color: TEAL_LT, marginTop: 2 }}>
-            {count === 0 ? "No stops yet" : `${count} stop${count > 1 ? "s" : ""} selected`}
+            {count === 0
+              ? "No stops yet"
+              : `${count} stop${count > 1 ? "s" : ""}${count > 1 ? ` · ≈ ${km} km driving` : ""}`}
           </div>
         </div>
         {count > 0 && (
@@ -436,13 +458,13 @@ function RouteSummary({
                   </div>
                 </div>
                 <div style={{ display: "flex", gap: 2, flexShrink: 0 }}>
-                  <button onClick={() => onMove(loc.id, -1)} disabled={i === 0} title="Move up" style={arrowBtn(i === 0)}>
+                  <button onClick={() => onMove(loc.id, -1)} disabled={i === 0} title="Move up" aria-label={`Move ${loc.name} up`} style={arrowBtn(i === 0)}>
                     ↑
                   </button>
-                  <button onClick={() => onMove(loc.id, 1)} disabled={i === selectedLocations.length - 1} title="Move down" style={arrowBtn(i === selectedLocations.length - 1)}>
+                  <button onClick={() => onMove(loc.id, 1)} disabled={i === selectedLocations.length - 1} title="Move down" aria-label={`Move ${loc.name} down`} style={arrowBtn(i === selectedLocations.length - 1)}>
                     ↓
                   </button>
-                  <button onClick={() => onRemove(loc.id)} title="Remove" style={{ ...arrowBtn(false), color: "oklch(0.75 0.12 25)" }}>
+                  <button onClick={() => onRemove(loc.id)} title="Remove" aria-label={`Remove ${loc.name}`} style={{ ...arrowBtn(false), color: "oklch(0.75 0.12 25)" }}>
                     ✕
                   </button>
                 </div>
@@ -452,39 +474,60 @@ function RouteSummary({
         )}
       </div>
 
-      <div style={{ padding: "16px 20px", borderTop: "1px solid oklch(1 0 0 / 0.1)" }}>
-        <a
-          href={count > 0 ? routeUrl : undefined}
-          target="_blank"
-          rel="noopener noreferrer"
-          onClick={(e) => {
-            if (count === 0) e.preventDefault();
-          }}
-          style={{
-            display: "block",
-            textAlign: "center",
-            padding: "13px 16px",
-            borderRadius: 11,
-            background: count > 0 ? AMBER : "oklch(0.35 0.04 220)",
-            color: count > 0 ? NAVY : "oklch(0.6 0.02 220)",
-            fontWeight: 700,
-            fontSize: 15,
-            textDecoration: "none",
-            cursor: count > 0 ? "pointer" : "not-allowed",
-            transition: "all 150ms",
-          }}
-        >
-          {count > 1 ? "Open full route in Google Maps →" : count === 1 ? "Open stop in Google Maps →" : "Add stops to build a route"}
-        </a>
+      <div style={{ padding: "16px 20px", borderTop: "1px solid oklch(1 0 0 / 0.1)", display: "flex", flexDirection: "column", gap: 8 }}>
+        {count === 0 ? (
+          <div style={{ ...routeBtn, background: "oklch(0.35 0.04 220)", color: "oklch(0.6 0.02 220)", cursor: "not-allowed" }}>
+            Add stops to build a route
+          </div>
+        ) : (
+          legs.map((leg, li) => {
+            const first = li * 9 + 1;
+            return (
+              <a key={li} href={buildRouteUrl(leg)} target="_blank" rel="noopener noreferrer" style={routeBtn}>
+                {legs.length > 1
+                  ? `Open leg ${li + 1} (stops ${first}–${first + leg.length - 1}) →`
+                  : count > 1
+                    ? "Open full route in Google Maps →"
+                    : "Open stop in Google Maps →"}
+              </a>
+            );
+          })
+        )}
+        {count > 0 && (
+          <button
+            onClick={onShare}
+            style={{ ...routeBtn, background: "oklch(1 0 0 / 0.08)", color: PARCHMENT_LT, border: "1px solid oklch(1 0 0 / 0.18)", cursor: "pointer" }}
+          >
+            ↗ Share this route
+          </button>
+        )}
         {count > 1 && (
-          <p style={{ fontSize: 11.5, color: "oklch(0.6 0.03 185)", textAlign: "center", marginTop: 10, lineHeight: 1.5 }}>
-            Opens all {count} stops as one multi-stop route. Reorder above to change the drive.
+          <p style={{ fontSize: 11.5, color: "oklch(0.6 0.03 185)", textAlign: "center", marginTop: 2, lineHeight: 1.5 }}>
+            {legs.length > 1
+              ? "Google Maps allows 10 points per route, so long trips open as connected legs."
+              : `Opens all ${count} stops as one multi-stop route. Reorder above to change the drive.`}
+            {" "}Driving distance is a rough estimate.
           </p>
         )}
       </div>
     </div>
   );
 }
+
+const routeBtn: React.CSSProperties = {
+  display: "block",
+  textAlign: "center",
+  padding: "13px 16px",
+  borderRadius: 11,
+  background: AMBER,
+  color: NAVY,
+  fontWeight: 700,
+  fontSize: 15,
+  textDecoration: "none",
+  border: "none",
+  fontFamily: "var(--font-body)",
+  transition: "all 150ms",
+};
 
 function arrowBtn(disabled: boolean): React.CSSProperties {
   return {
