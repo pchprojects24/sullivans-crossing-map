@@ -416,3 +416,39 @@ export function buildQuiz(length = 10): QuizQuestion[] {
   const played6 = shuffle(played).slice(0, Math.min(length - 3, played.length));
   return shuffle([...played6, ...where.slice(0, length - played6.length)]);
 }
+
+// Reorder stops into a short drive: nearest-neighbour from the first stop,
+// then 2-opt swaps to untangle crossings. Plenty for ≤37 points.
+export function optimizeRoute(locs: Location[]): Location[] {
+  if (locs.length < 3) return locs;
+  const rest = locs.slice(1);
+  const order = [locs[0]];
+  while (rest.length) {
+    const last = order[order.length - 1];
+    let best = 0;
+    for (let i = 1; i < rest.length; i++) {
+      if (distanceKm(last, rest[i]) < distanceKm(last, rest[best])) best = i;
+    }
+    order.push(rest.splice(best, 1)[0]);
+  }
+  const len = (r: Location[]) => r.slice(1).reduce((sum, l, i) => sum + distanceKm(r[i], l), 0);
+  let improved = true;
+  while (improved) {
+    improved = false;
+    for (let i = 1; i < order.length - 1; i++) {
+      for (let j = i + 1; j < order.length; j++) {
+        const candidate = [...order.slice(0, i), ...order.slice(i, j + 1).reverse(), ...order.slice(j + 1)];
+        if (len(candidate) + 1e-9 < len(order)) {
+          order.splice(0, order.length, ...candidate);
+          improved = true;
+        }
+      }
+    }
+  }
+  return order;
+}
+
+// Distance in km from an arbitrary point (e.g. the visitor's position).
+export function distanceFromKm(point: { lat: number; lon: number }, loc: Location): number {
+  return distanceKm({ ...loc, lat: point.lat, lon: point.lon }, loc);
+}

@@ -19,7 +19,7 @@ import {
   getMapsUrl,
   type Location,
 } from "@/data/locations";
-import { regions, getRegionForLocation } from "@/data/show";
+import { regions, getRegionForLocation, distanceFromKm } from "@/data/show";
 import { useVisited, useTrip, appUrl, shareLink } from "@/lib/fanStore";
 
 // Escape dataset strings before they go into Leaflet popup HTML.
@@ -150,10 +150,14 @@ function MapLegend({ compact = false }: { compact?: boolean }) {
 }
 
 // ── Location card (used in sidebar list and mobile sheet) ───────────────────
+function formatKm(km: number): string {
+  return km < 1 ? "< 1 km away" : `${km < 10 ? km.toFixed(1) : Math.round(km)} km away`;
+}
+
 function LocationCard({
-  loc, idx, isSelected, onSelect, compact = false,
+  loc, idx, isSelected, onSelect, compact = false, distanceKm,
 }: {
-  loc: Location; idx: number; isSelected: boolean; onSelect: () => void; compact?: boolean;
+  loc: Location; idx: number; isSelected: boolean; onSelect: () => void; compact?: boolean; distanceKm?: number;
 }) {
   const color = getMarkerColor(loc);
   const { isVisited, toggleVisited } = useVisited();
@@ -221,6 +225,11 @@ function LocationCard({
           <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
             <SeasonBadge season={loc.season} />
             <AccessBadge publicAccess={loc.publicAccess} />
+            {distanceKm !== undefined && (
+              <span style={{ fontSize: 11, fontWeight: 700, color: "oklch(0.45 0.08 250)", lineHeight: 1.6, padding: "2px 4px" }}>
+                📍 {formatKm(distanceKm)}
+              </span>
+            )}
           </div>
 
           {isSelected && (
@@ -324,6 +333,10 @@ export default function MapPage() {
   const dragStartY = useRef<number | null>(null);
   const dragStartSnap = useRef<"peek" | "half" | "full">("peek");
 
+  const [userPos, setUserPos] = useState<{ lat: number; lon: number } | null>(null);
+  const [locating, setLocating] = useState(false);
+  const userMarkerRef = useRef<L.CircleMarker | null>(null);
+
   const activeRegion = regions.find((r) => r.id === regionFilter);
   const q = searchQuery.trim().toLowerCase();
   const filteredLocations = useMemo(() => locations.filter((loc) => {
@@ -340,6 +353,16 @@ export default function MapPage() {
       loc.description.toLowerCase().includes(q);
     return matchRegion && matchSeason && matchCat && matchSearch;
   }), [activeRegion, seasonFilter, categoryFilter, q]);
+
+  // With "Near me" on, list the closest locations first.
+  const distances = useMemo(
+    () => (userPos ? new Map(locations.map((l) => [l.id, distanceFromKm(userPos, l)])) : null),
+    [userPos],
+  );
+  const listedLocations = useMemo(
+    () => (distances ? [...filteredLocations].sort((a, b) => distances.get(a.id)! - distances.get(b.id)!) : filteredLocations),
+    [filteredLocations, distances],
+  );
 
   const syncUrl = (params: Record<string, string | null>) => {
     const next = new URLSearchParams(window.location.search);
@@ -437,6 +460,55 @@ export default function MapPage() {
       marker.setZIndexOffset(id === selectedId ? 1000 : 0);
     });
   }, [selectedId, visited, mapReady]);
+
+  const locateMe = () => {
+    if (userPos) {
+      // Toggle off.
+      setUserPos(null);
+      userMarkerRef.current?.remove();
+      userMarkerRef.current = null;
+      return;
+    }
+    if (!navigator.geolocation) {
+      toast.error("Your browser can't share your location");
+      return;
+    }
+    setLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setLocating(false);
+        const here = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+        setUserPos(here);
+        const map = mapRef.current;
+        if (!map) return;
+        userMarkerRef.current?.remove();
+        userMarkerRef.current = L.circleMarker([here.lat, here.lon], {
+          radius: 8, color: "white", weight: 3, fillColor: "#2f6fdb", fillOpacity: 1,
+        }).bindTooltip("You are here").addTo(map);
+        const nearest = [...locations].sort((a, b) => distanceFromKm(here, a) - distanceFromKm(here, b))[0];
+        const km = distanceFromKm(here, nearest);
+        if (km > 400) {
+          toast(`The closest filming location is ${nearest.name}, ${Math.round(km).toLocaleString()} km away. Time to plan a trip to Nova Scotia!`);
+          return;
+        }
+        map.flyToBounds(L.latLngBounds([[here.lat, here.lon], [nearest.lat, nearest.lon]]), { padding: [60, 60], maxZoom: 13, duration: 0.8 });
+        toast.success(`Closest to you: ${nearest.name} (${formatKm(km)})`);
+        if (isMobile) setSheetSnap("half");
+      },
+      () => {
+        setLocating(false);
+        toast.error("Couldn't get your location — check your browser's location permission");
+      },
+      { enableHighAccuracy: false, timeout: 10000, maximumAge: 300000 },
+    );
+  };
+
+  const surpriseMe = () => {
+    const pool = filteredLocations.length ? filteredLocations : locations;
+    const others = pool.filter((l) => l.id !== selectedId);
+    const pick = (others.length ? others : pool)[Math.floor(Math.random() * (others.length || pool.length))];
+    selectLocation(pick);
+  };
 
   const resetFilters = () => {
     setSeasonFilter("all");
@@ -626,10 +698,11 @@ export default function MapPage() {
                   </div>
                 </div>
               ) : (
-                filteredLocations.map((loc, idx) => (
+                listedLocations.map((loc, idx) => (
                   <div key={loc.id} ref={(el) => { if (el) cardRefs.current.set(loc.id, el); }}>
                     <LocationCard
                       loc={loc} idx={idx}
+                      distanceKm={distances?.get(loc.id)}
                       isSelected={selectedId === loc.id}
                       onSelect={() => selectLocation(loc)}
                       compact
@@ -652,6 +725,16 @@ export default function MapPage() {
             initialZoom={isMobile ? 8 : 9}
             onMapReady={handleMapReady}
           />
+
+          {/* Near me / Surprise me */}
+          <div style={{ position: "absolute", top: 10, left: 10, zIndex: 6, display: "flex", gap: 6 }}>
+            <button onClick={locateMe} aria-pressed={!!userPos} disabled={locating} style={mapFab(!!userPos)}>
+              {locating ? "Locating…" : userPos ? "✕ Near me" : "📍 Near me"}
+            </button>
+            <button onClick={surpriseMe} style={mapFab(false)} title="Jump to a random filming location">
+              🎲 Surprise me
+            </button>
+          </div>
 
           {/* Location count overlay */}
           <div style={{
@@ -889,10 +972,11 @@ export default function MapPage() {
                   </div>
                 </div>
               ) : (
-                filteredLocations.map((loc, idx) => (
+                listedLocations.map((loc, idx) => (
                   <div key={loc.id} ref={(el) => { if (el) cardRefs.current.set(loc.id, el); }}>
                     <LocationCard
                       loc={loc} idx={idx}
+                      distanceKm={distances?.get(loc.id)}
                       isSelected={selectedId === loc.id}
                       onSelect={() => selectLocation(loc)}
                     />
@@ -958,6 +1042,17 @@ function RegionSelect({ value, onChange }: { value: string; onChange: (id: strin
       ))}
     </select>
   );
+}
+
+function mapFab(active: boolean): React.CSSProperties {
+  return {
+    padding: "7px 12px", borderRadius: 20, fontSize: 12.5, fontWeight: 700,
+    cursor: "pointer", touchAction: "manipulation", fontFamily: "var(--font-body)",
+    background: active ? "oklch(0.62 0.13 70)" : "oklch(0.22 0.06 220 / 0.92)",
+    color: active ? "oklch(0.22 0.06 220)" : "oklch(0.94 0.025 75)",
+    border: "1px solid oklch(0.38 0.06 220)", boxShadow: "0 2px 10px rgba(0,0,0,0.25)",
+    backdropFilter: "blur(4px)",
+  };
 }
 
 function cardActionBtn(activeColor?: string): React.CSSProperties {

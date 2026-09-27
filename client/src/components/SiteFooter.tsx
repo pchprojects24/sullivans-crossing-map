@@ -85,6 +85,11 @@ export default function SiteFooter() {
                 Location Trivia
               </Link>
             </li>
+            <li>
+              <Link href="/getaway" style={footerLink}>
+                Find Your Fan Getaway
+              </Link>
+            </li>
           </ul>
         </div>
 

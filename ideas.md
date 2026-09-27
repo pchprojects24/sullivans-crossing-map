@@ -22,6 +22,9 @@ keeping the "Maritime Cartographic Romance" look. Three routes share a common
 - **`/quiz` — Location Trivia.** Ten questions generated from the location
   dataset (scene → real place, place → region).
 
+- **`/getaway` — Find Your Fan Getaway.** A 5-question matcher that scores the
+  curated itineraries and loads the winner into the trip planner.
+
 Deep links: `/map?loc=<id>` opens a location, `/map?region=<id>` filters to a region.
 The map is Leaflet + OpenStreetMap/CARTO tiles, so it needs no API key.
 

@@ -7,16 +7,21 @@ deployed as a static site on GitHub Pages.
 ## Features
 
 - **Interactive map** (`/map`): every location on an OpenStreetMap basemap, with
-  season, category, region and text filters, fan tips and directions. Deep links
+  season, category, region and text filters, fan tips and directions. **Near me**
+  sorts locations by distance from you, and **Surprise me** jumps to a random spot. Deep links
   work: `/map?loc=4` opens Hali Deli and `/map?region=southshore` frames the
   South Shore.
 - **Plan a trip** (`/trip`): five ready-made fan itineraries, plus a route builder.
   Your route is saved on your device and can be shared as a `/trip?stops=…`
   link. Routes open in Google Maps and are split into legs of 10 points or
-  fewer, which is the most Google Maps accepts in one link.
+  fewer, which is the most Google Maps accepts in one link. **Optimize stop
+  order** reorders your stops for the shortest drive.
 - **Fan Passport** (`/passport`): tick off the locations you've visited (or
-  spotted from the road), earn badges and share your progress.
+  spotted from the road), earn badges (with confetti), share your progress or
+  download it as a passport-card image.
 - **Location trivia** (`/quiz`): ten questions generated from the location data.
+- **Find your fan getaway** (`/getaway`): five quick questions match you with one
+  of the fan road trips and load it into the planner.
 
 ## Data
 
