@@ -75,6 +75,16 @@ export default function SiteFooter() {
                 Plan a Trip
               </Link>
             </li>
+            <li>
+              <Link href="/passport" style={footerLink}>
+                Fan Passport
+              </Link>
+            </li>
+            <li>
+              <Link href="/quiz" style={footerLink}>
+                Location Trivia
+              </Link>
+            </li>
           </ul>
         </div>
 
@@ -106,7 +116,8 @@ export default function SiteFooter() {
           <h4 style={footerHeading}>Sources</h4>
           <p style={{ fontSize: 12, lineHeight: 1.7, color: "oklch(0.65 0.03 185)" }}>
             Nova Scotia Tourism · Atlas of Wonders · IMDb · CBC · Playback Online · Screen
-            Nova Scotia, plus locations confirmed by fans and local residents.
+            Nova Scotia, plus locations confirmed by fans and local residents. Map data
+            © OpenStreetMap contributors, tiles © CARTO.
           </p>
         </div>
       </div>

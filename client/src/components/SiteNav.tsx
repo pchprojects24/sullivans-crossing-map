@@ -9,6 +9,8 @@ const NAV = [
   { label: "Home", href: "/" },
   { label: "Interactive Map", href: "/map" },
   { label: "Plan a Trip", href: "/trip" },
+  { label: "Fan Passport", href: "/passport" },
+  { label: "Trivia", href: "/quiz" },
 ];
 
 export default function SiteNav({ transparent = false }: { transparent?: boolean }) {
@@ -83,7 +85,7 @@ export default function SiteNav({ transparent = false }: { transparent?: boolean
                 whiteSpace: "nowrap",
               }}
             >
-              The Fan Map
+              Unofficial Fan Guide
             </div>
           </div>
         </Link>
@@ -119,7 +121,8 @@ export default function SiteNav({ transparent = false }: { transparent?: boolean
         {isMobile && (
           <button
             onClick={() => setOpen((v) => !v)}
-            aria-label="Menu"
+            aria-label={open ? "Close menu" : "Open menu"}
+            aria-expanded={open}
             style={{
               width: 40,
               height: 40,

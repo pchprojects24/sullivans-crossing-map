@@ -7,6 +7,8 @@ import { ThemeProvider } from "./contexts/ThemeContext";
 import Home from "./pages/Home";
 import MapPage from "./pages/MapPage";
 import TripPlanner from "./pages/TripPlanner";
+import Passport from "./pages/Passport";
+import Quiz from "./pages/Quiz";
 
 
 // Vite's BASE_URL is "/" locally and "/<repo>/" on GitHub Pages; wouter wants it
@@ -20,6 +22,8 @@ function AppRouter() {
         <Route path={"/"} component={Home} />
         <Route path={"/map"} component={MapPage} />
         <Route path={"/trip"} component={TripPlanner} />
+        <Route path={"/passport"} component={Passport} />
+        <Route path={"/quiz"} component={Quiz} />
         <Route path={"/404"} component={NotFound} />
         {/* Final fallback route */}
         <Route component={NotFound} />
