@@ -1,14 +1,45 @@
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import NotFound from "@/pages/NotFound";
-import { Route, Router, Switch } from "wouter";
+import { lazy, Suspense, useEffect } from "react";
+import { Route, Router, Switch, useLocation } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import Home from "./pages/Home";
-import MapPage from "./pages/MapPage";
-import TripPlanner from "./pages/TripPlanner";
-import Passport from "./pages/Passport";
-import Quiz from "./pages/Quiz";
+
+// Secondary pages load on demand so the landing page stays light.
+const MapPage = lazy(() => import("./pages/MapPage"));
+const TripPlanner = lazy(() => import("./pages/TripPlanner"));
+const Passport = lazy(() => import("./pages/Passport"));
+const Quiz = lazy(() => import("./pages/Quiz"));
+const Getaway = lazy(() => import("./pages/Getaway"));
+const NotFound = lazy(() => import("./pages/NotFound"));
+
+const TITLES: Record<string, string> = {
+  "/": "Sullivan's Crossing – Nova Scotia Filming Locations Fan Guide",
+  "/map": "Interactive Map · Sullivan's Crossing Fan Guide",
+  "/trip": "Plan a Trip · Sullivan's Crossing Fan Guide",
+  "/passport": "Fan Passport · Sullivan's Crossing Fan Guide",
+  "/quiz": "Location Trivia · Sullivan's Crossing Fan Guide",
+  "/getaway": "Find Your Fan Getaway · Sullivan's Crossing Fan Guide",
+};
+
+// Start each page at the top and give it its own tab title.
+function PageEffects() {
+  const [location] = useLocation();
+  useEffect(() => {
+    window.scrollTo(0, 0);
+    document.title = TITLES[location] ?? "Page not found · Sullivan's Crossing Fan Guide";
+  }, [location]);
+  return null;
+}
+
+function PageLoading() {
+  return (
+    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "oklch(0.94 0.025 75)", color: "oklch(0.45 0.05 220)", fontFamily: "var(--font-display)", fontStyle: "italic" }}>
+      ⚓ Loading…
+    </div>
+  );
+}
 
 
 // Vite's BASE_URL is "/" locally and "/<repo>/" on GitHub Pages; wouter wants it
@@ -18,16 +49,20 @@ const ROUTER_BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 function AppRouter() {
   return (
     <Router base={ROUTER_BASE}>
+      <PageEffects />
+      <Suspense fallback={<PageLoading />}>
       <Switch>
         <Route path={"/"} component={Home} />
         <Route path={"/map"} component={MapPage} />
         <Route path={"/trip"} component={TripPlanner} />
         <Route path={"/passport"} component={Passport} />
         <Route path={"/quiz"} component={Quiz} />
+        <Route path={"/getaway"} component={Getaway} />
         <Route path={"/404"} component={NotFound} />
         {/* Final fallback route */}
         <Route component={NotFound} />
       </Switch>
+      </Suspense>
     </Router>
   );
 }

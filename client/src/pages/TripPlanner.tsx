@@ -17,6 +17,7 @@ import {
   getLocationsByIds,
   splitRouteLegs,
   estimateRouteKm,
+  optimizeRoute,
   type Itinerary,
 } from "@/data/show";
 import { getMarkerColor, type Location } from "@/data/locations";
@@ -68,7 +69,8 @@ export default function TripPlanner() {
     const raw = new URLSearchParams(search).get("stops");
     if (!raw) return;
     const ids = getLocationsByIds(raw.split(",").map(Number)).map((l) => l.id);
-    if (ids.length) {
+    const replacing = selectedIds.length > 0 && selectedIds.join(",") !== ids.join(",");
+    if (ids.length && (!replacing || window.confirm(`Replace your saved ${selectedIds.length}-stop route with this ${ids.length}-stop route?`))) {
       setSelectedIds(ids);
       toast.success(`Loaded a shared route with ${ids.length} stop${ids.length > 1 ? "s" : ""}`);
       scrollToBuilder();
@@ -127,7 +129,8 @@ export default function TripPlanner() {
             </h1>
             <p style={{ marginTop: 18, maxWidth: 620, fontSize: "clamp(15px, 2.2vw, 18px)", lineHeight: 1.6, color: "oklch(0.8 0.03 75)" }}>
               Grab a ready-made fan itinerary or hand-pick your own stops — then open the whole
-              route in Google Maps and drive it for real.
+              route in Google Maps and drive it for real. Not sure where to start?{" "}
+              <Link href="/getaway" style={{ color: "oklch(0.82 0.11 70)", fontWeight: 700 }}>Find your fan getaway →</Link>
             </p>
           </Reveal>
         </div>
@@ -353,6 +356,13 @@ export default function TripPlanner() {
               onMove={move}
               onClear={() => setSelectedIds([])}
               onShare={shareRoute}
+              onOptimize={() => {
+                const before = estimateRouteKm(selectedLocations);
+                const next = optimizeRoute(selectedLocations);
+                const after = estimateRouteKm(next);
+                setSelectedIds(next.map((l) => l.id));
+                toast.success(after < before ? `Route optimized — about ${before - after} km shorter` : "Your route is already in a great order");
+              }}
             />
           </div>
         </div>
@@ -378,12 +388,14 @@ function RouteSummary({
   onMove,
   onClear,
   onShare,
+  onOptimize,
 }: {
   selectedLocations: Location[];
   onRemove: (id: number) => void;
   onMove: (id: number, dir: -1 | 1) => void;
   onClear: () => void;
   onShare: () => void;
+  onOptimize: () => void;
 }) {
   const count = selectedLocations.length;
   const legs = splitRouteLegs(selectedLocations);
@@ -492,6 +504,15 @@ function RouteSummary({
               </a>
             );
           })
+        )}
+        {count > 2 && (
+          <button
+            onClick={onOptimize}
+            title="Keeps your first stop and reorders the rest for the shortest drive"
+            style={{ ...routeBtn, background: "oklch(1 0 0 / 0.08)", color: PARCHMENT_LT, border: "1px solid oklch(1 0 0 / 0.18)", cursor: "pointer" }}
+          >
+            ✨ Optimize stop order
+          </button>
         )}
         {count > 0 && (
           <button

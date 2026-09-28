@@ -5,6 +5,9 @@
 // blocked storage simply fall back to in-memory state.
 
 import { useSyncExternalStore } from "react";
+import { toast } from "sonner";
+import { badges, badgeProgress } from "@/data/show";
+import { confetti } from "@/lib/confetti";
 
 type Key = "visited" | "trip";
 const STORAGE_KEYS: Record<Key, string> = {
@@ -56,8 +59,19 @@ export function useVisited() {
   return {
     visited,
     isVisited: (id: number) => visited.includes(id),
-    toggleVisited: (id: number) =>
-      set("visited", state.visited.includes(id) ? state.visited.filter((x) => x !== id) : [...state.visited, id]),
+    toggleVisited: (id: number) => {
+      const before = state.visited;
+      const adding = !before.includes(id);
+      const next = adding ? [...before, id] : before.filter((x) => x !== id);
+      set("visited", next);
+      if (!adding) return;
+      // Celebrate any badge this visit just unlocked.
+      const unlocked = badges.filter((b) => badgeProgress(b, next).earned && !badgeProgress(b, before).earned);
+      if (unlocked.length) {
+        confetti();
+        unlocked.forEach((b) => toast.success(`${b.emoji} Badge earned: ${b.name}`, { description: b.description }));
+      }
+    },
     resetVisited: () => set("visited", []),
   };
 }

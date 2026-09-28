@@ -569,6 +569,14 @@ export default function Home() {
               cta: "Play the trivia →",
               color: TEAL,
             },
+            {
+              href: "/getaway",
+              emoji: "🧳",
+              title: "Find Your Fan Getaway",
+              body: "Five quick questions match you with the perfect fan road trip — then load it straight into the trip planner.",
+              cta: "Find my getaway →",
+              color: "#7a3a5a",
+            },
           ].map((c, i) => (
             <Reveal key={c.href} delay={i * 80} style={{ height: "100%" }}>
               <Link
@@ -713,7 +721,7 @@ export default function Home() {
         <div style={{ position: "absolute", inset: 0, backgroundImage: TOPO, backgroundSize: "260px 260px", opacity: 0.7 }} />
         <div style={{ position: "relative", maxWidth: 760, margin: "0 auto", padding: "clamp(56px, 9vw, 96px) clamp(18px, 5vw, 28px)", textAlign: "center" }}>
           <Reveal>
-            <div style={{ fontSize: 40, marginBottom: 10 }}>🧭</div>
+            <div style={{ fontSize: 40, marginBottom: 10 }} aria-hidden>🧭</div>
             <h2 style={{ fontFamily: "var(--font-display)", fontSize: "clamp(28px, 5vw, 46px)", fontWeight: 700, color: PARCHMENT_LT, margin: 0, lineHeight: 1.1 }}>
               Ready to find your way to the Crossing?
             </h2>

@@ -13,6 +13,7 @@ import Reveal from "@/components/Reveal";
 import { regions, badges, badgeProgress, getLocationsByIds } from "@/data/show";
 import { locations, getMarkerColor } from "@/data/locations";
 import { useVisited, appUrl, shareLink } from "@/lib/fanStore";
+import { downloadPassportCard } from "@/lib/passportCard";
 
 const NAVY = "oklch(0.22 0.06 220)";
 const NAVY_DEEP = "oklch(0.17 0.05 220)";
@@ -103,6 +104,15 @@ export default function Passport() {
               </p>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 24 }}>
                 <button onClick={share} style={primaryBtn}>↗ Share my progress</button>
+                <button
+                  onClick={() => downloadPassportCard(visited).then(
+                    () => toast.success("Passport card saved — post it proudly!"),
+                    () => toast.error("Couldn't create the image on this device"),
+                  )}
+                  style={ghostBtn}
+                >
+                  ⬇ Download my card
+                </button>
                 <Link href="/map" style={ghostBtn}>Open the map</Link>
                 {visited.length > 0 && (
                   <button onClick={reset} style={{ ...ghostBtn, color: "oklch(0.75 0.1 25)" }}>Reset</button>
