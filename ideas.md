@@ -22,6 +22,8 @@ keeping the "Maritime Cartographic Romance" look. Three routes share a common
 - **`/quiz` — Location Trivia.** Ten questions generated from the location
   dataset (scene → real place, place → region).
 
+- **`/episodes` — Episode Guide.** Episode titles for all four seasons with the
+  locations tied to each episode (`EPISODE_LOCATIONS` in `show.ts`).
 - **`/getaway` — Find Your Fan Getaway.** A 5-question matcher that scores the
   curated itineraries and loads the winner into the trip planner.
 

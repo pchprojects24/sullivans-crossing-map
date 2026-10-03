@@ -1,0 +1,40 @@
+name: Location correction or new sighting
+description: Fix a detail on a filming location, or tell us about one we're missing.
+title: "Correction: "
+labels: ["location-data"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for helping keep the guide accurate! Please never share a private
+        resident's personal details. A public road or a show credit is all we need.
+  - type: input
+    id: location
+    attributes:
+      label: Which location (or what's the new one)?
+    validations:
+      required: true
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What kind of update is it?
+    options:
+      - Wrong or outdated detail (address, hours, price, access)
+      - Wrong season or episode
+      - Wrong map pin position
+      - A filming location that's missing
+      - Something else
+    validations:
+      required: true
+  - type: textarea
+    id: details
+    attributes:
+      label: What should it say?
+      description: Include the season and episode if you know it.
+    validations:
+      required: true
+  - type: input
+    id: source
+    attributes:
+      label: Source
+      description: A link, show credit, or "I was there and saw filming on <date>".

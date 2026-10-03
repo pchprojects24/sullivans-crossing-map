@@ -205,7 +205,7 @@ export default function TripPlanner() {
 
                     <div style={{ display: "flex", gap: 8, marginTop: 18, flexWrap: "wrap" }}>
                       <a
-                        href={buildRouteUrl(stops)}
+                        href={buildRouteUrl(stops, it.travelMode)}
                         target="_blank"
                         rel="noopener noreferrer"
                         style={{
@@ -220,7 +220,7 @@ export default function TripPlanner() {
                           textDecoration: "none",
                         }}
                       >
-                        Open route in Maps →
+                        {it.travelMode === "walking" ? "Open walking route in Maps →" : "Open route in Maps →"}
                       </a>
                       <button
                         onClick={() => loadItinerary(it)}

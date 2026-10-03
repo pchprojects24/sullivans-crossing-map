@@ -30,9 +30,20 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Type-check and test
+        run: |
+          pnpm check
+          pnpm test
+
       - name: Build site
         # The map uses Leaflet + OpenStreetMap tiles, so no API keys are needed.
         run: pnpm exec vite build --base="/${{ github.event.repository.name }}/"
+
+      - name: Prerender per-route pages, sitemap and robots.txt
+        run: node scripts/prerender-routes.mjs dist/public "https://${{ github.repository_owner }}.github.io" "/${{ github.event.repository.name }}/"
+
+      - name: Drop dev-only files from the site
+        run: rm -rf dist/public/__manus__
 
       - name: Add SPA fallback for client-side routes
         run: cp dist/public/index.html dist/public/404.html

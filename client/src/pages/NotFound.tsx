@@ -1,49 +1,32 @@
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { AlertCircle, Home } from "lucide-react";
-import { useLocation } from "wouter";
+import { Link } from "wouter";
+import SiteNav from "@/components/SiteNav";
+import SiteFooter from "@/components/SiteFooter";
 
+const NAVY = "oklch(0.22 0.06 220)";
+const AMBER = "oklch(0.62 0.13 70)";
+
+// Friendly dead end for mistyped or outdated links.
 export default function NotFound() {
-  const [, setLocation] = useLocation();
-
-  const handleGoHome = () => {
-    setLocation("/");
-  };
-
   return (
-    <div className="min-h-screen w-full flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100">
-      <Card className="w-full max-w-lg mx-4 shadow-lg border-0 bg-white/80 backdrop-blur-sm">
-        <CardContent className="pt-8 pb-8 text-center">
-          <div className="flex justify-center mb-6">
-            <div className="relative">
-              <div className="absolute inset-0 bg-red-100 rounded-full animate-pulse" />
-              <AlertCircle className="relative h-16 w-16 text-red-500" />
-            </div>
-          </div>
-
-          <h1 className="text-4xl font-bold text-slate-900 mb-2">404</h1>
-
-          <h2 className="text-xl font-semibold text-slate-700 mb-4">
-            Page Not Found
-          </h2>
-
-          <p className="text-slate-600 mb-8 leading-relaxed">
-            Sorry, the page you are looking for doesn't exist.
-            <br />
-            It may have been moved or deleted.
+    <div style={{ background: "oklch(0.94 0.025 75)", minHeight: "100vh", display: "flex", flexDirection: "column" }}>
+      <SiteNav />
+      <main style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: "56px 20px", textAlign: "center" }}>
+        <div style={{ maxWidth: 520 }}>
+          <div style={{ fontSize: 54 }} aria-hidden>🧭</div>
+          <h1 style={{ fontFamily: "var(--font-display)", fontSize: "clamp(32px, 6vw, 48px)", color: NAVY, margin: "10px 0 0", lineHeight: 1.1 }}>
+            Looks like you've wandered off the trail
+          </h1>
+          <p style={{ marginTop: 14, fontSize: 17, lineHeight: 1.6, color: "oklch(0.40 0.05 220)" }}>
+            That page doesn't exist, but the Crossing is just a few clicks away.
           </p>
-
-          <div className="flex flex-col sm:flex-row gap-3 justify-center">
-            <Button
-              onClick={handleGoHome}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-lg transition-all duration-200 shadow-md hover:shadow-lg"
-            >
-              <Home className="w-4 h-4 mr-2" />
-              Go Home
-            </Button>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 10, justifyContent: "center", marginTop: 26 }}>
+            <Link href="/" style={{ padding: "12px 22px", borderRadius: 12, background: AMBER, color: NAVY, fontWeight: 700, textDecoration: "none" }}>Back to home</Link>
+            <Link href="/map" style={{ padding: "12px 22px", borderRadius: 12, border: `1.5px solid ${NAVY}`, color: NAVY, fontWeight: 700, textDecoration: "none" }}>Open the map</Link>
+            <Link href="/episodes" style={{ padding: "12px 22px", borderRadius: 12, border: `1.5px solid ${NAVY}`, color: NAVY, fontWeight: 700, textDecoration: "none" }}>Episode guide</Link>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </main>
+      <SiteFooter />
     </div>
   );
 }

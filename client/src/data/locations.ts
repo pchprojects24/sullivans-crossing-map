@@ -47,6 +47,8 @@ export interface Location {
   visitorTip: string;
   publicAccess: boolean;
   mapsUrl?: string;
+  // Identified by fans or local witnesses rather than a production or tourism source.
+  fanSpotted?: boolean;
 }
 
 export const locations: Location[] = [
@@ -323,6 +325,7 @@ export const locations: Location[] = [
     lon: -63.5300,
     visitorTip: "An active educational campus – the exterior architecture is visible from the road.",
     publicAccess: false,
+    fanSpotted: true,
   },
 
   // ─── EASTERN PASSAGE / FISHERMAN'S COVE ─────────────────────────────────────
@@ -369,6 +372,7 @@ export const locations: Location[] = [
     lon: -63.5944,
     visitorTip: "Open summers – swim in Grand Lake or bring a canoe/kayak for an immersive fan experience. One of the best ways to feel like you're at Sully's campground!",
     publicAccess: true,
+    fanSpotted: true,
   },
   {
     id: 23,
@@ -557,6 +561,7 @@ export const locations: Location[] = [
     lon: -63.8700,
     visitorTip: "A small community fire station – viewable from the road. Mount Uniacke is also home to the historic Uniacke Estate Museum Park.",
     publicAccess: false,
+    fanSpotted: true,
   },
   {
     id: 36,
@@ -690,4 +695,25 @@ export function getMarkerColor(location: Location): string {
 export function getMapsUrl(location: Location): string {
   if (location.mapsUrl) return location.mapsUrl;
   return `https://www.google.com/maps/search/?api=1&query=${location.lat},${location.lon}`;
+}
+
+// Does a location appear in the given season? "Season 2+" runs from Season 2
+// onward, so it includes Season 4.
+export function matchesSeason(loc: Location, filter: string): boolean {
+  if (filter === "all") return true;
+  const always: Season[] = ["All Seasons", "Multiple Seasons"];
+  const bySeason: Record<string, Season[]> = {
+    "Season 1": ["Season 1", "Seasons 1 & 2"],
+    "Season 2": ["Season 2", "Seasons 1 & 2", "Seasons 2 & 3", "Season 2+"],
+    "Season 3": ["Season 3", "Seasons 2 & 3", "Season 2+"],
+    "Season 4": ["Season 4", "Season 2+"],
+  };
+  const specific = bySeason[filter];
+  if (!specific) return loc.season === filter;
+  return specific.includes(loc.season) || always.includes(loc.season);
+}
+
+// True when a location is tied to particular seasons rather than the whole run.
+export function isSeasonSpecific(loc: Location): boolean {
+  return loc.season !== "All Seasons" && loc.season !== "Multiple Seasons";
 }

@@ -8,13 +8,16 @@ import { useIsMobile } from "@/hooks/useMobile";
 const NAV = [
   { label: "Home", href: "/" },
   { label: "Interactive Map", href: "/map" },
+  { label: "Episodes", href: "/episodes" },
   { label: "Plan a Trip", href: "/trip" },
-  { label: "Fan Passport", href: "/passport" },
+  { label: "Passport", href: "/passport" },
   { label: "Trivia", href: "/quiz" },
+  { label: "Getaway", href: "/getaway" },
 ];
 
 export default function SiteNav({ transparent = false }: { transparent?: boolean }) {
-  const [location] = useLocation();
+  const [rawLocation] = useLocation();
+  const location = rawLocation.replace(/\/+$/, "") || "/";
   const isMobile = useIsMobile();
   const [open, setOpen] = useState(false);
 
@@ -99,8 +102,9 @@ export default function SiteNav({ transparent = false }: { transparent?: boolean
                 <Link
                   key={item.href}
                   href={item.href}
+                  aria-current={active ? "page" : undefined}
                   style={{
-                    padding: "7px 14px",
+                    padding: "7px 12px",
                     borderRadius: 20,
                     fontSize: 13.5,
                     fontWeight: 600,
@@ -160,6 +164,7 @@ export default function SiteNav({ transparent = false }: { transparent?: boolean
               <Link
                 key={item.href}
                 href={item.href}
+                aria-current={active ? "page" : undefined}
                 onClick={() => setOpen(false)}
                 style={{
                   padding: "11px 14px",
