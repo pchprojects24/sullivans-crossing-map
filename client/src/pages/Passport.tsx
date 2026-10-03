@@ -5,7 +5,7 @@
  * State lives in localStorage via fanStore, shared with the map page.
  */
 
-import { Link } from "wouter";
+import { Link, useSearch } from "wouter";
 import { toast } from "sonner";
 import SiteNav from "@/components/SiteNav";
 import SiteFooter from "@/components/SiteFooter";
@@ -54,15 +54,29 @@ function ProgressRing({ value, total }: { value: number; total: number }) {
   );
 }
 
+// /passport?seen=1,4,25 shows someone else's passport, read-only.
+function parseSeen(search: string): number[] | null {
+  const raw = new URLSearchParams(search).get("seen");
+  if (raw === null) return null;
+  const ids = raw.split(",").map(Number);
+  return Array.from(new Set(ids.filter((id) => locations.some((l) => l.id === id))));
+}
+
 export default function Passport() {
-  const { visited, isVisited, toggleVisited, resetVisited } = useVisited();
+  const mine = useVisited();
+  const search = useSearch();
+  const friend = parseSeen(search);
+  const viewing = friend !== null;
+  const visited = friend ?? mine.visited;
+  const isVisited = (id: number) => visited.includes(id);
+  const { toggleVisited, resetVisited } = mine;
   const earned = badges.filter((b) => badgeProgress(b, visited).earned);
   const pct = Math.round((visited.length / locations.length) * 100);
 
   const share = async () => {
     const result = await shareLink(
       "My Sullivan's Crossing Fan Passport",
-      appUrl("/passport"),
+      appUrl(`/passport?seen=${visited.join(",")}`),
       `I've visited ${visited.length} of ${locations.length} Sullivan's Crossing filming locations in Nova Scotia and earned ${earned.length} badges! 🎟️`,
     );
     if (result === "copied") toast.success("Link copied — share your progress!");
@@ -76,6 +90,13 @@ export default function Passport() {
   return (
     <div style={{ background: PARCHMENT, minHeight: "100vh" }}>
       <SiteNav transparent />
+
+      {viewing && (
+        <div role="status" style={{ background: "oklch(0.62 0.13 70)", color: NAVY, padding: "10px clamp(18px, 5vw, 28px)", textAlign: "center", fontSize: 14, fontWeight: 600 }}>
+          You're viewing a friend's passport ({visited.length} of {locations.length} stops).{" "}
+          <Link href="/passport" style={{ color: NAVY, fontWeight: 800 }}>Open my own passport →</Link>
+        </div>
+      )}
 
       {/* ── Header ────────────────────────────────────────────────────────── */}
       <section style={{ background: `linear-gradient(160deg, ${NAVY} 0%, ${NAVY_DEEP} 100%)` }}>
@@ -100,10 +121,11 @@ export default function Passport() {
               </h1>
               <p style={{ marginTop: 16, maxWidth: 560, fontSize: "clamp(15px, 2.2vw, 18px)", lineHeight: 1.6, color: "oklch(0.8 0.03 75)" }}>
                 Tick off each filming location as you visit — or spot it from the road, for the
-                private ones — and earn badges along the way. Your passport is saved on this device.
+                private ones — and earn badges along the way. Your passport is saved on this device;
+                "Share my progress" sends friends a link that shows your stops.
               </p>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 24 }}>
-                <button onClick={share} style={primaryBtn}>↗ Share my progress</button>
+                <button onClick={share} style={primaryBtn}>{viewing ? "↗ Share this passport" : "↗ Share my progress"}</button>
                 <button
                   onClick={() => downloadPassportCard(visited).then(
                     () => toast.success("Passport card saved — post it proudly!"),
@@ -111,10 +133,10 @@ export default function Passport() {
                   )}
                   style={ghostBtn}
                 >
-                  ⬇ Download my card
+                  ⬇ Download {viewing ? "this" : "my"} card
                 </button>
                 <Link href="/map" style={ghostBtn}>Open the map</Link>
-                {visited.length > 0 && (
+                {!viewing && visited.length > 0 && (
                   <button onClick={reset} style={{ ...ghostBtn, color: "oklch(0.75 0.1 25)" }}>Reset</button>
                 )}
               </div>
@@ -194,13 +216,14 @@ export default function Passport() {
                         role="checkbox"
                         aria-checked={checked}
                         aria-label={`${checked ? "Unmark" : "Mark"} ${loc.name} as visited`}
-                        onClick={() => toggleVisited(loc.id)}
+                        onClick={() => !viewing && toggleVisited(loc.id)}
+                        disabled={viewing}
                         style={{
                           width: 28,
                           height: 28,
                           borderRadius: 8,
                           flexShrink: 0,
-                          cursor: "pointer",
+                          cursor: viewing ? "default" : "pointer",
                           background: checked ? GOLD : "transparent",
                           border: `1.5px solid ${checked ? GOLD : "oklch(0.72 0.03 75)"}`,
                           color: "white",

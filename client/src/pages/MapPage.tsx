@@ -17,9 +17,11 @@ import {
   seasonColors,
   getMarkerColor,
   getMapsUrl,
+  matchesSeason,
   type Location,
 } from "@/data/locations";
-import { regions, getRegionForLocation, distanceFromKm } from "@/data/show";
+import { regions, getRegionForLocation, distanceFromKm, getEpisodesForLocation, episodeCode } from "@/data/show";
+import { correctionUrl } from "@/lib/links";
 import { useVisited, useTrip, appUrl, shareLink } from "@/lib/fanStore";
 
 // Escape dataset strings before they go into Leaflet popup HTML.
@@ -48,19 +50,6 @@ const SEASON_FILTERS = [
   { label: "All Seasons", value: "All Seasons" },
   { label: "Multi", value: "Multiple Seasons" },
 ];
-
-function matchesSeason(loc: Location, filter: string): boolean {
-  if (filter === "all") return true;
-  if (filter === "Season 1")
-    return ["Season 1", "Seasons 1 & 2", "All Seasons", "Multiple Seasons"].includes(loc.season);
-  if (filter === "Season 2")
-    return ["Season 2", "Seasons 1 & 2", "Seasons 2 & 3", "Season 2+", "All Seasons", "Multiple Seasons"].includes(loc.season);
-  if (filter === "Season 3")
-    return ["Season 3", "Seasons 2 & 3", "Season 2+", "All Seasons", "Multiple Seasons"].includes(loc.season);
-  if (filter === "Season 4")
-    return ["Season 4", "All Seasons", "Multiple Seasons"].includes(loc.season);
-  return loc.season === filter;
-}
 
 // ── Small reusable badges ───────────────────────────────────────────────────
 function SeasonBadge({ season }: { season: string }) {
@@ -165,6 +154,7 @@ function LocationCard({
   const visited = isVisited(loc.id);
   const queued = inTrip(loc.id);
   const region = getRegionForLocation(loc.id);
+  const eps = getEpisodesForLocation(loc.id);
 
   const share = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -225,6 +215,11 @@ function LocationCard({
           <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
             <SeasonBadge season={loc.season} />
             <AccessBadge publicAccess={loc.publicAccess} />
+            {loc.fanSpotted && (
+              <span title="Identified by a fan or local witnesses" style={{ display: "inline-block", fontSize: 11, padding: "2px 8px", borderRadius: 20, background: "#7a3a5a18", color: "#7a3a5a", border: "1px solid #7a3a5a44", lineHeight: 1.6 }}>
+                👀 Fan-spotted
+              </span>
+            )}
             {distanceKm !== undefined && (
               <span style={{ fontSize: 11, fontWeight: 700, color: "oklch(0.45 0.08 250)", lineHeight: 1.6, padding: "2px 4px" }}>
                 📍 {formatKm(distanceKm)}
@@ -241,6 +236,16 @@ function LocationCard({
               animation: "fadeIn 150ms ease-out",
             }}>
               <p style={{ marginBottom: 8 }}>{loc.description}</p>
+              {eps.length > 0 && (
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center", marginBottom: 8, fontSize: 12 }}>
+                  <span style={{ fontWeight: 700 }}>📺 Rewatch:</span>
+                  {eps.map((e) => (
+                    <Link key={episodeCode(e)} href={`/episodes#${episodeCode(e)}`} onClick={(ev) => ev.stopPropagation()} style={{ color: "oklch(0.40 0.10 185)", fontWeight: 700, textDecoration: "underline" }}>
+                      {episodeCode(e)} “{e.title}”
+                    </Link>
+                  ))}
+                </div>
+              )}
               <div style={{
                 padding: "8px 10px", background: "oklch(0.88 0.030 75)",
                 borderRadius: 6, borderLeft: `3px solid ${color}`, marginBottom: 8,
@@ -291,6 +296,15 @@ function LocationCard({
                 ↗ Share
               </button>
               </div>
+              <a
+                href={correctionUrl(loc.name)}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                style={{ display: "inline-block", marginTop: 8, fontSize: 11.5, color: "oklch(0.45 0.05 220)" }}
+              >
+                Spotted a mistake? Suggest a correction
+              </a>
             </div>
           )}
         </div>
@@ -325,6 +339,7 @@ export default function MapPage() {
   });
   const [seasonFilter, setSeasonFilter] = useState("all");
   const [categoryFilter, setCategoryFilter] = useState("all");
+  const [visitFilter, setVisitFilter] = useState<"all" | "todo" | "done">("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [sheetSnap, setSheetSnap] = useState<"peek" | "half" | "full">(() => (initialParams.get("loc") ? "half" : "peek"));
   const [mobileLegendOpen, setMobileLegendOpen] = useState(false);
@@ -350,9 +365,11 @@ export default function MapPage() {
       loc.name.toLowerCase().includes(q) ||
       loc.showName.toLowerCase().includes(q) ||
       loc.address.toLowerCase().includes(q) ||
-      loc.description.toLowerCase().includes(q);
-    return matchRegion && matchSeason && matchCat && matchSearch;
-  }), [activeRegion, seasonFilter, categoryFilter, q]);
+      loc.description.toLowerCase().includes(q) ||
+      getEpisodesForLocation(loc.id).some((e) => e.title.toLowerCase().includes(q) || episodeCode(e).toLowerCase() === q);
+    const matchVisit = visitFilter === "all" || (visitFilter === "done") === visited.includes(loc.id);
+    return matchRegion && matchSeason && matchCat && matchSearch && matchVisit;
+  }), [activeRegion, seasonFilter, categoryFilter, q, visitFilter, visited]);
 
   // With "Near me" on, list the closest locations first.
   const distances = useMemo(
@@ -513,6 +530,7 @@ export default function MapPage() {
   const resetFilters = () => {
     setSeasonFilter("all");
     setCategoryFilter("all");
+    setVisitFilter("all");
     setSearchQuery("");
     changeRegion("all");
   };
@@ -544,65 +562,69 @@ export default function MapPage() {
         borderBottom: "2px solid oklch(0.62 0.13 70 / 0.5)",
       }}>
         <div style={{
-          padding: isMobile ? "10px 14px" : "0 20px",
+          padding: isMobile ? "8px 12px" : "0 20px",
           display: "flex", alignItems: "center",
-          justifyContent: "space-between", gap: 12,
+          flexDirection: isMobile ? "column" : "row",
+          justifyContent: "space-between", gap: isMobile ? 8 : 12,
           minHeight: isMobile ? "auto" : 56,
         }}>
-          {/* Brand → links home */}
-          <Link href="/" style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0, textDecoration: "none" }}>
-            <div style={{
-              width: 36, height: 36, borderRadius: "50%",
-              background: "oklch(0.62 0.13 70)",
-              display: "flex", alignItems: "center", justifyContent: "center",
-              fontSize: 16, flexShrink: 0,
-              boxShadow: "0 2px 8px rgba(0,0,0,0.3)",
-            }}>⚓</div>
-            <div style={{ minWidth: 0 }}>
-              <h1 style={{
-                fontFamily: "var(--font-display)",
-                color: "oklch(0.96 0.015 75)",
-                fontSize: "clamp(14px, 3.5vw, 19px)",
-                fontWeight: 700, lineHeight: 1.1,
-                whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
-              }}>
-                Sullivan's Crossing
-              </h1>
-              <p style={{
-                color: "oklch(0.62 0.09 185)",
-                fontSize: "clamp(9px, 2vw, 10px)",
-                letterSpacing: "0.10em", textTransform: "uppercase",
-              }}>
-                {locations.length} filming locations · ✓ {visited.length} visited
-              </p>
-            </div>
-          </Link>
-
-          {/* Right cluster: nav + season filter pills */}
-          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" }}>
-            <nav aria-label="Site" style={{ display: "flex", gap: 4 }}>
-              {MAP_NAV.map((n) => (
-                <Link key={n.href} href={n.href} style={mapNavChip} aria-label={n.label} title={n.label}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, width: isMobile ? "100%" : "auto", minWidth: 0 }}>
+            {/* Brand → links home */}
+            <Link href="/" aria-label="Sullivan's Crossing home" style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0, textDecoration: "none" }}>
+              <div style={{
+                width: 34, height: 34, borderRadius: "50%",
+                background: "oklch(0.62 0.13 70)",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                fontSize: 16, flexShrink: 0,
+                boxShadow: "0 2px 8px rgba(0,0,0,0.3)",
+              }}>⚓</div>
+              <div style={{ minWidth: 0 }}>
+                <h1 style={{
+                  fontFamily: "var(--font-display)",
+                  color: "oklch(0.96 0.015 75)",
+                  fontSize: "clamp(14px, 3.5vw, 19px)",
+                  fontWeight: 700, lineHeight: 1.1,
+                  whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+                }}>
+                  Sullivan's Crossing
+                </h1>
+                <p style={{
+                  color: "oklch(0.62 0.09 185)",
+                  fontSize: "clamp(9px, 2vw, 10px)",
+                  letterSpacing: "0.10em", textTransform: "uppercase", whiteSpace: "nowrap",
+                }}>
+                  {locations.length} locations · ✓ {visited.length} visited
+                </p>
+              </div>
+            </Link>
+            <nav aria-label="Site" style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+              {MAP_NAV.filter((n) => !isMobile || n.href !== "/").map((n) => (
+                <Link key={n.href} href={n.href} style={isMobile ? { ...mapNavChip, padding: "5px 7px" } : mapNavChip} aria-label={n.label} title={n.label}>
                   {isMobile ? n.icon : n.label}
                 </Link>
               ))}
             </nav>
-            <div style={{ display: "flex", gap: 4, flexWrap: "wrap", justifyContent: "flex-end" }}>
-              {SEASON_FILTERS.map((s) => (
-                <button key={s.value} onClick={() => setSeasonFilter(s.value)} aria-pressed={seasonFilter === s.value} style={{
-                  padding: "3px 9px", borderRadius: 20,
-                  fontSize: "clamp(10px, 2.2vw, 11px)", fontWeight: 600,
-                  letterSpacing: "0.03em", cursor: "pointer",
-                  transition: "all 150ms cubic-bezier(0.23,1,0.32,1)",
-                  background: seasonFilter === s.value ? "oklch(0.62 0.13 70)" : "oklch(0.28 0.06 220)",
-                  color: seasonFilter === s.value ? "oklch(0.22 0.06 220)" : "oklch(0.78 0.03 75)",
-                  border: "1px solid oklch(0.38 0.06 220)",
-                  minHeight: 28, touchAction: "manipulation",
-                }}>
-                  {s.label}
-                </button>
-              ))}
-            </div>
+          </div>
+          <div style={{
+            display: "flex", gap: 4,
+            flexWrap: isMobile ? "nowrap" : "wrap", justifyContent: "flex-end",
+            overflowX: isMobile ? "auto" : "visible", width: isMobile ? "100%" : "auto",
+            scrollbarWidth: "none",
+          }}>
+            {SEASON_FILTERS.map((s) => (
+              <button key={s.value} onClick={() => setSeasonFilter(s.value)} aria-pressed={seasonFilter === s.value} style={{
+                padding: "3px 9px", borderRadius: 20, flexShrink: 0, whiteSpace: "nowrap",
+                fontSize: "clamp(10px, 2.2vw, 11px)", fontWeight: 600,
+                letterSpacing: "0.03em", cursor: "pointer",
+                transition: "all 150ms cubic-bezier(0.23,1,0.32,1)",
+                background: seasonFilter === s.value ? "oklch(0.62 0.13 70)" : "oklch(0.28 0.06 220)",
+                color: seasonFilter === s.value ? "oklch(0.22 0.06 220)" : "oklch(0.78 0.03 75)",
+                border: "1px solid oklch(0.38 0.06 220)",
+                minHeight: 28, touchAction: "manipulation",
+              }}>
+                {s.label}
+              </button>
+            ))}
           </div>
         </div>
       </header>
@@ -627,7 +649,7 @@ export default function MapPage() {
             }}>
               <input
                 type="text"
-                placeholder="Search locations, show names…"
+                placeholder="Search places, scenes, episodes…"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 style={{
@@ -641,6 +663,7 @@ export default function MapPage() {
                 aria-label="Search locations"
               />
               <RegionSelect value={regionFilter} onChange={changeRegion} />
+              <VisitFilter value={visitFilter} onChange={setVisitFilter} count={visited.length} />
               <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
                 <button
                   onClick={() => setCategoryFilter("all")}
@@ -912,7 +935,7 @@ export default function MapPage() {
             >
               <input
                 type="text"
-                placeholder="Search locations…"
+                placeholder="Search places, scenes, episodes…"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 style={{
@@ -927,6 +950,7 @@ export default function MapPage() {
                 aria-label="Search locations"
               />
               <RegionSelect value={regionFilter} onChange={changeRegion} />
+              <VisitFilter value={visitFilter} onChange={setVisitFilter} count={visited.length} />
               <div style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 2 }}>
                 <button onClick={() => setCategoryFilter("all")} style={{
                   padding: "5px 12px", borderRadius: 20,
@@ -1019,10 +1043,40 @@ export default function MapPage() {
 
 const MAP_NAV = [
   { label: "Home", href: "/", icon: "🏠" },
+  { label: "Episodes", href: "/episodes", icon: "📺" },
   { label: "Plan a Trip", href: "/trip", icon: "🧭" },
-  { label: "Fan Passport", href: "/passport", icon: "🎟️" },
+  { label: "Passport", href: "/passport", icon: "🎟️" },
   { label: "Trivia", href: "/quiz", icon: "❓" },
+  { label: "Getaway", href: "/getaway", icon: "🧳" },
 ];
+
+function VisitFilter({ value, onChange, count }: { value: "all" | "todo" | "done"; onChange: (v: "all" | "todo" | "done") => void; count: number }) {
+  const opts = [
+    { v: "all", label: "All" },
+    { v: "todo", label: "Still to visit" },
+    { v: "done", label: `Visited (${count})` },
+  ] as const;
+  return (
+    <div role="group" aria-label="Filter by passport progress" style={{ display: "flex", gap: 4, marginBottom: 8 }}>
+      {opts.map((o) => (
+        <button
+          key={o.v}
+          onClick={() => onChange(o.v)}
+          aria-pressed={value === o.v}
+          style={{
+            flex: 1, padding: "5px 6px", borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: "pointer", minHeight: 30,
+            touchAction: "manipulation", fontFamily: "var(--font-body)",
+            background: value === o.v ? "oklch(0.62 0.13 70)" : "oklch(0.90 0.020 75)",
+            color: value === o.v ? "oklch(0.22 0.06 220)" : "oklch(0.40 0.05 220)",
+            border: "1px solid oklch(0.80 0.025 75)",
+          }}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 function RegionSelect({ value, onChange }: { value: string; onChange: (id: string) => void }) {
   return (

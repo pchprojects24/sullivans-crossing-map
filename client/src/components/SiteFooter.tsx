@@ -1,7 +1,8 @@
 // Shared site footer: where-to-watch, quick links, sources and fan disclaimer.
 
 import { Link } from "wouter";
-import { whereToWatch, stats } from "@/data/show";
+import { whereToWatch, stats, DATA_UPDATED } from "@/data/show";
+import { ISSUES_URL } from "@/lib/links";
 
 export default function SiteFooter() {
   return (
@@ -71,6 +72,11 @@ export default function SiteFooter() {
               </Link>
             </li>
             <li>
+              <Link href="/episodes" style={footerLink}>
+                Episode Guide
+              </Link>
+            </li>
+            <li>
               <Link href="/trip" style={footerLink}>
                 Plan a Trip
               </Link>
@@ -122,7 +128,13 @@ export default function SiteFooter() {
           <p style={{ fontSize: 12, lineHeight: 1.7, color: "oklch(0.65 0.03 185)" }}>
             Nova Scotia Tourism · Atlas of Wonders · IMDb · CBC · Playback Online · Screen
             Nova Scotia, plus locations confirmed by fans and local residents. Map data
-            © OpenStreetMap contributors, tiles © CARTO.
+            © OpenStreetMap contributors, tiles © CARTO. Episode titles per CTV, The CW and
+            IMDb. Data last reviewed {DATA_UPDATED}.
+          </p>
+          <p style={{ fontSize: 12.5, lineHeight: 1.6, marginTop: 10 }}>
+            <a href={`${ISSUES_URL}/new/choose`} target="_blank" rel="noopener noreferrer" style={{ ...footerLink, fontSize: 12.5, fontWeight: 700, color: "oklch(0.82 0.11 70)" }}>
+              Spotted a location or a mistake? Tell us →
+            </a>
           </p>
         </div>
       </div>

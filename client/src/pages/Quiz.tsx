@@ -5,7 +5,7 @@
  * Each answer reveals the location's fan tip and a link to the map.
  */
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { Link } from "wouter";
 import { toast } from "sonner";
 import SiteNav from "@/components/SiteNav";
@@ -32,11 +32,22 @@ function rank(score: number, total: number): { title: string; blurb: string } {
   return { title: "Just Passing Through", blurb: "Time for a rewatch — and a trip to the map!" };
 }
 
+const BEST_KEY = "sc-fan:quiz-best";
+function readBest(): number {
+  try {
+    return Number(localStorage.getItem(BEST_KEY)) || 0;
+  } catch {
+    return 0;
+  }
+}
+
 export default function Quiz() {
   const [questions, setQuestions] = useState<QuizQuestion[]>(() => buildQuiz());
   const [index, setIndex] = useState(0);
   const [picked, setPicked] = useState<string | null>(null);
   const [score, setScore] = useState(0);
+  const [missed, setMissed] = useState<QuizQuestion[]>([]);
+  const [best, setBest] = useState(readBest);
   const done = index >= questions.length;
   const q = questions[index];
   const loc = q ? locations.find((l) => l.id === q.locationId) : undefined;
@@ -45,7 +56,19 @@ export default function Quiz() {
     if (picked) return;
     setPicked(opt);
     if (opt === q.answer) setScore((s) => s + 1);
+    else setMissed((m) => [...m, q]);
   };
+
+  // Remember the best score on this device.
+  useEffect(() => {
+    if (!done || score <= best) return;
+    setBest(score);
+    try {
+      localStorage.setItem(BEST_KEY, String(score));
+    } catch {
+      /* storage unavailable */
+    }
+  }, [done, score, best]);
 
   const next = () => {
     setPicked(null);
@@ -57,6 +80,7 @@ export default function Quiz() {
     setIndex(0);
     setPicked(null);
     setScore(0);
+    setMissed([]);
   }, []);
 
   const share = async () => {
@@ -169,6 +193,20 @@ export default function Quiz() {
               {rank(score, questions.length).title}
             </h2>
             <p style={{ fontSize: 16, color: MUTED }}>{rank(score, questions.length).blurb}</p>
+            {best > 0 && <p style={{ fontSize: 13.5, fontWeight: 700, color: MUTED }}>Your best on this device: {best}/{questions.length}</p>}
+            {missed.length > 0 && (
+              <div style={{ textAlign: "left", margin: "22px auto 0", maxWidth: 560, background: PARCHMENT_LT, borderRadius: 14, padding: "16px 18px", border: "1px solid oklch(0.85 0.025 75)" }}>
+                <h3 style={{ fontFamily: "var(--font-display)", fontSize: 18, color: NAVY, margin: "0 0 8px" }}>Brush up on these</h3>
+                <ul style={{ margin: 0, paddingLeft: 18, fontSize: 14, lineHeight: 1.7, color: "oklch(0.32 0.05 220)" }}>
+                  {missed.map((m) => (
+                    <li key={m.prompt}>
+                      {m.prompt} <b>{m.answer}</b>{" "}
+                      <Link href={`/map?loc=${m.locationId}`} style={{ color: TEAL, fontWeight: 700 }}>map</Link>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
             <div style={{ display: "flex", flexWrap: "wrap", gap: 10, justifyContent: "center", marginTop: 24 }}>
               <button onClick={restart} style={primaryBtn}>Play again</button>
               <button onClick={share} style={{ ...primaryBtn, background: NAVY, color: PARCHMENT_LT }}>↗ Challenge a friend</button>

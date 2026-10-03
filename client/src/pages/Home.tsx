@@ -146,7 +146,7 @@ export default function Home() {
             >
               Every windswept lighthouse, cozy diner booth and lakeside campground has a
               real address. Explore all {stats.total} confirmed filming locations, plan a
-              road trip, and stand exactly where Maggie, Cal and Sully do.
+              road trip, and stand where Maggie and Cal do.
             </p>
           </Reveal>
 
@@ -273,6 +273,8 @@ export default function Home() {
                 { k: "Premiered", v: show.premiere },
                 { k: "Seasons", v: `${show.seasons} (${show.years})` },
                 { k: "Filmed in", v: "Nova Scotia, Canada" },
+                { k: "Latest", v: show.latestSeason },
+                { k: "Up next", v: show.nextSeason },
                 { k: "Based on", v: "Robyn Carr's novels" },
               ].map((row, i, arr) => (
                 <div
@@ -551,8 +553,16 @@ export default function Home() {
             Collect the locations, test your knowledge
           </h2>
         </Reveal>
-        <div style={{ marginTop: 32, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 18 }}>
+        <div style={{ marginTop: 32, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))", gap: 18 }}>
           {[
+            {
+              href: "/episodes",
+              emoji: "📺",
+              title: "Episode Guide",
+              body: "All 40 episodes with the filming locations tied to each one — rewatch a scene, then visit the real place.",
+              cta: "Browse episodes →",
+              color: NAVY,
+            },
             {
               href: "/passport",
               emoji: "🎟️",
@@ -618,7 +628,7 @@ export default function Home() {
           style={{
             marginTop: 36,
             display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+            gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
             gap: 18,
           }}
         >
@@ -652,7 +662,9 @@ export default function Home() {
                   {c.character.replace(/[“”"]/g, "").split(" ").map((w) => w[0]).slice(0, 2).join("")}
                 </div>
                 <h3 style={{ fontFamily: "var(--font-display)", fontSize: 20, fontWeight: 700, color: NAVY, margin: 0 }}>{c.character}</h3>
-                <div style={{ fontSize: 13.5, color: AMBER, fontWeight: 700, marginTop: 3 }}>{c.actor}</div>
+                <div style={{ fontSize: 13.5, color: "oklch(0.50 0.13 70)", fontWeight: 700, marginTop: 3 }}>
+                  {c.actor}{c.seasons ? ` · ${c.seasons}` : ""}
+                </div>
                 <p style={{ marginTop: 12, fontSize: 14.5, lineHeight: 1.6, color: MUTED }}>{c.blurb}</p>
               </div>
             </Reveal>
