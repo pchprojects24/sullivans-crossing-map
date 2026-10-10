@@ -545,7 +545,9 @@ export function optimizeRoute(locs: Location[]): Location[] {
       }
     }
   }
-  return order;
+  // Nearest-neighbour plus 2-opt is a heuristic, not a global optimum.
+  // Keep the fan's original route if it is already shorter.
+  return len(order) < len(locs) ? order : locs.slice();
 }
 
 // Distance in km from an arbitrary point (e.g. the visitor's position).

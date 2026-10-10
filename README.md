@@ -19,7 +19,8 @@ deployed as a static site on GitHub Pages.
   Your route is saved on your device and can be shared as a `/trip?stops=…`
   link. Routes open in Google Maps and are split into legs of 10 points or
   fewer, which is the most Google Maps accepts in one link. **Optimize stop
-  order** reorders your stops for the shortest drive.
+  order** looks for a shorter route using estimated distances, keeps your first
+  stop, and preserves your order if it is already shorter.
 - **Fan Passport** (`/passport`): tick off the locations you've visited (or
   spotted from the road), earn badges (with confetti), share your progress or
   download it as a passport-card image. "Share my progress" sends a link

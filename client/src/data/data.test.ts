@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { locations, matchesSeason } from "./locations";
-import { regions, itineraries, episodes, buildQuiz, buildRouteUrl, splitRouteLegs, badges, getEpisodesForLocation, optimizeRoute } from "./show";
+import { regions, itineraries, episodes, buildQuiz, buildRouteUrl, splitRouteLegs, badges, getEpisodesForLocation, optimizeRoute, distanceKm, getLocationsByIds } from "./show";
 
 const ids = new Set(locations.map((l) => l.id));
 
@@ -105,5 +105,16 @@ describe("routes", () => {
     const out = optimizeRoute(stops);
     expect(out[0]).toBe(stops[0]);
     expect(new Set(out.map((l) => l.id))).toEqual(new Set(stops.map((l) => l.id)));
+  });
+
+  it("never replaces a shorter saved route with a longer heuristic route", () => {
+    const route = getLocationsByIds([5, 4, 7, 37, 3, 26, 28, 29]);
+    const originalIds = route.map((l) => l.id);
+    const length = (r: typeof route) => r.slice(1).reduce((km, l, i) => km + distanceKm(r[i], l), 0);
+    const optimized = optimizeRoute(route);
+    expect(length(optimized)).toBeLessThanOrEqual(length(route));
+    expect(route.map((l) => l.id)).toEqual(originalIds);
+    expect(optimized[0]).toBe(route[0]);
+    expect(new Set(optimized)).toEqual(new Set(route));
   });
 });

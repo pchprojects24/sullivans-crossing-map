@@ -8,18 +8,26 @@ import { useSyncExternalStore } from "react";
 import { toast } from "sonner";
 import { badges, badgeProgress } from "@/data/show";
 import { confetti } from "@/lib/confetti";
+import { locations } from "@/data/locations";
 
 type Key = "visited" | "trip";
 const STORAGE_KEYS: Record<Key, string> = {
   visited: "sc-fan:visited",
   trip: "sc-fan:trip",
 };
+const locationIds = new Set(locations.map((location) => location.id));
+
+function validIds(value: unknown): number[] {
+  return Array.isArray(value)
+    ? Array.from(new Set(value.filter((id): id is number => Number.isInteger(id) && locationIds.has(id))))
+    : [];
+}
 
 function read(key: Key): number[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEYS[key]);
     const parsed = raw ? JSON.parse(raw) : [];
-    return Array.isArray(parsed) ? parsed.filter((n) => Number.isInteger(n)) : [];
+    return validIds(parsed);
   } catch {
     return [];
   }
@@ -29,9 +37,9 @@ const state: Record<Key, number[]> = { visited: read("visited"), trip: read("tri
 const listeners = new Set<() => void>();
 
 function set(key: Key, next: number[]) {
-  state[key] = next;
+  state[key] = validIds(next);
   try {
-    localStorage.setItem(STORAGE_KEYS[key], JSON.stringify(next));
+    localStorage.setItem(STORAGE_KEYS[key], JSON.stringify(state[key]));
   } catch {
     /* storage unavailable – keep in memory only */
   }
@@ -41,7 +49,16 @@ function set(key: Key, next: number[]) {
 function subscribe(cb: () => void) {
   listeners.add(cb);
   const onStorage = (e: StorageEvent) => {
-    if (e.key === STORAGE_KEYS.visited) state.visited = read("visited");
+    // localStorage.clear() emits a null key; sessionStorage is unrelated.
+    try {
+      if (e.storageArea && e.storageArea !== localStorage) return;
+    } catch {
+      return;
+    }
+    if (e.key === null) {
+      state.visited = read("visited");
+      state.trip = read("trip");
+    } else if (e.key === STORAGE_KEYS.visited) state.visited = read("visited");
     else if (e.key === STORAGE_KEYS.trip) state.trip = read("trip");
     else return;
     cb();

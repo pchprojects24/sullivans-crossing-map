@@ -148,7 +148,7 @@ export default function TripPlanner() {
           </h2>
         </Reveal>
 
-        <div style={{ marginTop: 34, display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 20 }}>
+        <div style={{ marginTop: 34, display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 320px), 1fr))", gap: 20 }}>
           {itineraries.map((it, i) => {
             const stops = getLocationsByIds(it.stopIds);
             return (
@@ -373,7 +373,7 @@ export default function TripPlanner() {
       <style>{`
         html, body { overflow-x: hidden; }
         @media (max-width: 820px) {
-          .builder-grid { grid-template-columns: 1fr !important; }
+          .builder-grid { grid-template-columns: minmax(0, 1fr) !important; }
           .route-summary { position: static !important; }
         }
       `}</style>
@@ -508,7 +508,7 @@ function RouteSummary({
         {count > 2 && (
           <button
             onClick={onOptimize}
-            title="Keeps your first stop and reorders the rest for the shortest drive"
+            title="Keeps your first stop and looks for a shorter route using estimated distances"
             style={{ ...routeBtn, background: "oklch(1 0 0 / 0.08)", color: PARCHMENT_LT, border: "1px solid oklch(1 0 0 / 0.18)", cursor: "pointer" }}
           >
             ✨ Optimize stop order
